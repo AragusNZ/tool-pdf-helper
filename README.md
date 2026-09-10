@@ -26,17 +26,25 @@ Office documents are converted with Microsoft Office if it is installed, otherwi
 
 ## Run from source
 
+Linux / WSL (needs WSLg for the window):
+
 ```
-python -m venv .venv
-.venv\Scripts\activate          # Linux/WSL: . .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 python -m pdf_helper
 pytest            # add --cov for a coverage report
 ```
 
-## Build the exe (Windows)
+Windows: same, but `py -3 -m venv .venv` and `.venv\Scripts\activate`.
 
-Double-click `build.cmd` or run `build.ps1`. Output: `dist\PdfHelper\PdfHelper.exe` plus `dist\PdfHelper-<version>.zip` and its `.sha256`.
+## Build the exe
+
+Always built with Windows Python, PyInstaller cannot cross-compile.
+
+- From WSL: `./build.sh` (calls the Windows `py` launcher; venv and build dir go to `%LOCALAPPDATA%\pdf-helper`).
+- From Windows: double-click `build.cmd` or run `build.ps1`.
+
+Output: `dist\PdfHelper\PdfHelper.exe` plus `dist\PdfHelper-<version>.zip` and its `.sha256`. Copy `dist\` across.
 
 Set `PDF_HELPER_NO_COM=1` to force the LibreOffice path when testing.
 

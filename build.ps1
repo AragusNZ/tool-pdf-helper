@@ -1,10 +1,12 @@
 # Builds dist\PdfHelper\PdfHelper.exe, then dist\PdfHelper-<version>.zip + .sha256.
-# Run on Windows with Python 3.12 installed (py launcher).
+# Needs Windows Python 3 (py launcher). From WSL run ./build.sh - it uses the Windows Python over \\wsl.localhost.
+# The venv and PyInstaller work dir live under %LOCALAPPDATA%\pdf-helper: pip over \\wsl.localhost is unusably slow.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-if (-not (Test-Path .venv)) { py -3.12 -m venv .venv }
-$py = '.venv\Scripts\python.exe'
+$work = Join-Path $env:LOCALAPPDATA 'pdf-helper'
+$py = "$work\venv\Scripts\python.exe"
+if (-not (Test-Path $py)) { py -3 -m venv "$work\venv" }
 & $py -m pip install --quiet --upgrade pip
 & $py -m pip install --quiet -r requirements.txt -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
@@ -12,7 +14,7 @@ if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 $version = & $py -c "import pdf_helper; print(pdf_helper.__version__)"
 $name = 'PdfHelper'
 
-& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name pdf_helper\__main__.py
+& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 
 $stage = "dist\$name"
