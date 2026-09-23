@@ -13,8 +13,12 @@ Features:
 - **Compress** – downsample images (three presets), subset fonts, garbage-collect. Writes `<name>-small.pdf`.
 - **PDF to images** – one PNG per page at chosen DPI.
 - **Watermark** – diagonal grey text on every page, writes `<name>-stamped.pdf`.
+- **Add text** – click the spot on a page preview, then pick the wording, font, size and colour. Applies to a page spec or every page of every queued PDF. Writes `<name>-text.pdf`.
+- **Add image** – same click-to-place preview, with the width set in millimetres and the aspect ratio kept. Writes `<name>-image.pdf`.
 - **Replace text** – find and replace a string on every page, case-insensitive by default. Writes `<name>-replaced.pdf`. Replacements are drawn in Helvetica at the original size and colour; longer text is shrunk to fit.
 - **PDF to Word** – `.docx` via pdf2docx. Layout approximate. This dependency pulls in numpy + OpenCV and adds roughly 100 MB to the exe.
+
+Fonts for **Add text**: the 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the `pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). They are embedded in the PDF, so the output renders the same anywhere.
 
 **View > Theme** switches between System, Light and Dark; the choice is remembered. System follows the OS on
 Windows and macOS - on Linux it falls back to the palette in use at startup.

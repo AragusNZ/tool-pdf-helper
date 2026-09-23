@@ -2,3 +2,4 @@ PySide6>=6.7,<7
 pymupdf>=1.24,<2
 pywin32>=306; sys_platform == "win32"
 pdf2docx>=0.5.8,<1
+pymupdf-fonts>=1.0,<2

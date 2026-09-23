@@ -14,8 +14,9 @@ if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 $version = & $py -c "import pdf_helper; print(pdf_helper.__version__)"
 $name = 'PdfHelper'
 
-& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --icon pdf_helper\assets\icon.ico `
-    --add-data "pdf_helper\assets;pdf_helper\assets" --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
+# Asset paths are absolute: a relative --add-data/--icon resolves against --specpath, which is outside the repo.
+& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --collect-submodules pymupdf_fonts --icon "$PSScriptRoot\pdf_helper\assets\icon.ico" `
+    --add-data "$PSScriptRoot\pdf_helper\assets;pdf_helper\assets" --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 
 $stage = "dist\$name"

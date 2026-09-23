@@ -7,14 +7,15 @@ import pytest
 
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
-    FEATURES, compress, create_pdf, extract_content, extract_pages, merge, replace_text, rotate, split, to_docx, to_images, watermark,
+    FEATURES, add_image, add_text, compress, create_pdf, extract_content, extract_pages, merge, replace_text, rotate,
+    split, to_docx, to_images, watermark,
 )
 from pdf_helper.features.base import FeatureContext
 
 
 def test_registry_labels_unique():
     labels = [f.label for f in FEATURES]
-    assert len(labels) == len(set(labels)) == 11
+    assert len(labels) == len(set(labels)) == 13
 
 
 def test_enabled_for_gating(make_pdf, make_png, tmp_path: Path):
@@ -287,3 +288,79 @@ def test_extract_pages_prompt_carries_hint(make_pdf, tmp_path: Path, log, monkey
     monkeypatch.setattr(extract_pages, "save_pdf_path", lambda *a: tmp_path / "e.pdf")
     extract_pages.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 2)], log))
     assert not prompts[0].startswith("Invalid") and prompts[1].startswith("Invalid: 'abc' is not a page number")
+
+
+# --- add_text / add_image ---------------------------------------------------
+class _FakeDialog:
+    """Stands in for PlaceDialog: no Qt, canned answers."""
+
+    accept = True
+    result: tuple = ()
+
+    def __init__(self, parent, src: Path, mode: str):
+        self.src, self.mode = src, mode
+
+    def exec(self) -> bool:
+        return type(self).accept
+
+    def params(self) -> tuple:
+        return type(self).result
+
+
+def _fake_dialog(monkeypatch, module, accept: bool, result: tuple = ()):
+    fake = type("_D", (_FakeDialog,), {"accept": accept, "result": result})
+    monkeypatch.setattr(module, "PlaceDialog", fake)
+    return fake
+
+
+def test_add_text_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    pdf = make_pdf("a.pdf", 2)
+    _fake_dialog(monkeypatch, add_text, True, ("PAID", (72.0, 144.0), "2", "helv", 30, (1, 0, 0)))
+    monkeypatch.setattr(add_text, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([pdf], log)
+    params = add_text.FEATURE.prepare(ctx)
+    assert params == ("PAID", (72.0, 144.0), "2", "helv", 30, (1, 0, 0), tmp_path)
+    add_text.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "a-text.pdf") as doc:
+        assert "PAID" in doc[1].get_text() and "PAID" not in doc[0].get_text()
+    assert "text on 1 page(s)" in log.lines[-1]
+
+
+def test_add_text_blank_spec_is_every_page(make_pdf, tmp_path: Path, log):
+    ctx = FeatureContext([make_pdf("a.pdf", 3)], log)
+    add_text.FEATURE.run(ctx, ("X", (72.0, 72.0), "", "helv", 12, (0, 0, 0), tmp_path))
+    with pymupdf.open(tmp_path / "a-text.pdf") as doc:
+        assert all("X" in page.get_text() for page in doc)
+    assert "text on all page(s)" in log.lines[-1]
+
+
+def test_add_text_spec_checked_per_file(make_pdf, tmp_path: Path, log):
+    short, long = make_pdf("short.pdf", 1), make_pdf("long.pdf", 4)
+    params = ("X", (72.0, 72.0), "4", "helv", 12, (0, 0, 0), tmp_path)
+    with pytest.raises(RuntimeError, match="1 of 2"):
+        add_text.FEATURE.run(FeatureContext([short, long], log), params)
+    assert (tmp_path / "long-text.pdf").exists() and not (tmp_path / "short-text.pdf").exists()
+    assert log.lines[0].startswith("ERROR: short.pdf:") and "outside 1-1" in log.lines[0]
+
+
+def test_add_image_prepare_and_run(make_pdf, make_png, tmp_path: Path, log, monkeypatch):
+    pdf, png = make_pdf("a.pdf", 2), make_png("pic.png", 20)
+    _fake_dialog(monkeypatch, add_image, True, (png, (50.0, 50.0, 110.0, 110.0), "1"))
+    monkeypatch.setattr(add_image, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([pdf], log)
+    params = add_image.FEATURE.prepare(ctx)
+    assert params == (png, (50.0, 50.0, 110.0, 110.0), "1", tmp_path)
+    add_image.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "a-image.pdf") as doc:
+        assert doc[0].get_images() and not doc[1].get_images()
+    assert "pic.png on 1 page(s)" in log.lines[-1]
+
+
+@pytest.mark.parametrize("module, result", [(add_text, ("X", (1.0, 1.0), "1", "helv", 12, (0, 0, 0))),
+                                           (add_image, (Path("p.png"), (1.0, 1.0, 2.0, 2.0), "1"))])
+@pytest.mark.parametrize("accepted", [False, True])
+def test_place_prepare_cancel(make_pdf, log, monkeypatch, module, result, accepted):
+    """Cancelling the dialog, or the folder chooser after it, both mean no work."""
+    _fake_dialog(monkeypatch, module, accepted, result)
+    monkeypatch.setattr(module, "choose_directory", lambda *a: None)
+    assert module.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
