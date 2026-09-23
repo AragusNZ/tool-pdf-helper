@@ -1,6 +1,8 @@
-"""Look and feel: asset lookup, the stylesheet, and the light/dark switch.
+"""Look and feel: asset lookup, Windows 11 palettes, the stylesheet, and the light/dark switch.
 
-Colours are palette roles, never literals, so one stylesheet is correct in both schemes.
+Colours are lifted from WinUI's Common_themeresources_any.xaml, with its alpha values pre-blended
+onto the layer they sit on so Qt gets opaque colours. Two layers: the window is the base
+(SolidBackgroundFillColorBase), group boxes are cards on it, controls sit on the cards.
 """
 
 import sys
@@ -8,7 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
-from PySide6.QtWidgets import QApplication, QStyleFactory
+from PySide6.QtWidgets import QApplication
 
 SCHEMES = {
     "System": Qt.ColorScheme.Unknown,
@@ -16,36 +18,80 @@ SCHEMES = {
     "Dark": Qt.ColorScheme.Dark,
 }
 
-STYLESHEET = """
+R = QPalette.ColorRole
+LIGHT = {
+    R.Window: "#F3F3F3",  # SolidBackgroundFillColorBase
+    R.AlternateBase: "#FBFBFB",  # CardBackgroundFillColorDefault over base
+    R.Base: "#FDFDFD",  # ControlFillColorDefault over card
+    R.Button: "#FDFDFD",
+    R.Midlight: "#F9F9F9",  # ControlFillColorSecondary (hover)
+    R.Dark: "#F5F5F5",  # ControlFillColorTertiary (pressed)
+    R.Mid: "#E5E5E5",  # Card/ControlStrokeColorDefault
+    R.WindowText: "#1B1B1B",  # TextFillColorPrimary
+    R.Text: "#1B1B1B",
+    R.ButtonText: "#1B1B1B",
+    R.PlaceholderText: "#5F5F5F",  # TextFillColorSecondary
+    R.Highlight: "#005FB8",  # default accent, Dark1
+    R.HighlightedText: "#FFFFFF",
+    R.BrightText: "#C42B1C",  # SystemFillColorCritical - the log's error colour
+    "disabled": "#A0A0A0",  # TextFillColorDisabled
+}
+DARK = {
+    R.Window: "#202020",
+    R.AlternateBase: "#2B2B2B",
+    R.Base: "#373737",
+    R.Button: "#373737",
+    R.Midlight: "#3C3C3C",
+    R.Dark: "#323232",
+    R.Mid: "#454545",
+    R.WindowText: "#FFFFFF",
+    R.Text: "#FFFFFF",
+    R.ButtonText: "#FFFFFF",
+    R.PlaceholderText: "#CFCFCF",
+    R.Highlight: "#60CDFF",  # default accent, Light2
+    R.HighlightedText: "#000000",
+    R.BrightText: "#FF99A4",
+    "disabled": "#787878",
+}
+
+# Always on: card surfaces and spacing. Safe under any style - it only touches containers.
+METRICS = """
 QGroupBox {
+    background: palette(alternate-base);
     border: 1px solid palette(mid);
-    border-radius: 6px;
-    margin-top: 12px;
-    padding: 10px 8px 8px 8px;
-    font-weight: bold;
+    border-radius: 4px;
+    margin-top: 14px;
+    padding: 12px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
-    left: 10px;
+    left: 12px;
     padding: 0 4px;
+    font-weight: 600;
 }
+QStatusBar::item { border: none; }
+"""
+
+# Fusion only. A border/background rule on a control replaces the style's own drawing, and the
+# native windows11 style already draws Fluent controls better than a stylesheet can.
+LOOK = """
 QPushButton {
-    padding: 6px 12px;
-    min-height: 20px;
+    min-height: 32px;
+    padding: 0 12px;
     border: 1px solid palette(mid);
     border-radius: 4px;
     background: palette(button);
 }
 QPushButton:hover:enabled { background: palette(midlight); border-color: palette(highlight); }
 QPushButton:pressed:enabled { background: palette(dark); }
-QPushButton:disabled { color: palette(mid); border-color: palette(midlight); }
+QPushButton:disabled { border-color: palette(midlight); }
 QListWidget, QPlainTextEdit {
+    background: palette(base);
     border: 1px solid palette(mid);
     border-radius: 4px;
 }
 QListWidget::item { padding: 3px 4px; }
 QListWidget::item:selected { background: palette(highlight); color: palette(highlighted-text); }
-QStatusBar::item { border: none; }
 """
 
 
@@ -55,59 +101,31 @@ def asset_path(name: str) -> Path:
     return base / "pdf_helper" / "assets" / name
 
 
-def _dark_palette() -> QPalette:
-    """Fusion has no dark palette of its own, so spell one out."""
-    window, base, alt = QColor("#2b2b2b"), QColor("#1e1e1e"), QColor("#323232")
-    text, disabled, highlight = QColor("#e6e6e6"), QColor("#6f6f6f"), QColor("#2f6fb5")
+def stylesheet(style_name: str) -> str:
+    return METRICS + (LOOK if style_name.lower() == "fusion" else "")
+
+
+def _palette(colours: dict) -> QPalette:
     p = QPalette()
-    for role, colour in (
-        (QPalette.ColorRole.Window, window),
-        (QPalette.ColorRole.Base, base),
-        (QPalette.ColorRole.AlternateBase, alt),
-        (QPalette.ColorRole.Button, QColor("#3a3a3a")),
-        (QPalette.ColorRole.ToolTipBase, window),
-        (QPalette.ColorRole.WindowText, text),
-        (QPalette.ColorRole.Text, text),
-        (QPalette.ColorRole.ButtonText, text),
-        (QPalette.ColorRole.ToolTipText, text),
-        (QPalette.ColorRole.BrightText, QColor("#ff5555")),
-        (QPalette.ColorRole.Highlight, highlight),
-        (QPalette.ColorRole.HighlightedText, QColor("#ffffff")),
-        (QPalette.ColorRole.PlaceholderText, disabled),
-        # Borders in the stylesheet come from these three.
-        (QPalette.ColorRole.Dark, QColor("#1a1a1a")),
-        (QPalette.ColorRole.Mid, QColor("#565656")),
-        (QPalette.ColorRole.Midlight, QColor("#484848")),
-    ):
-        p.setColor(role, colour)
-    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
-        p.setColor(QPalette.ColorGroup.Disabled, role, disabled)
+    for role, value in colours.items():
+        if role != "disabled":
+            p.setColor(role, QColor(value))
+    for role in (R.Text, R.ButtonText, R.WindowText):
+        p.setColor(QPalette.ColorGroup.Disabled, role, QColor(colours["disabled"]))
     return p
 
 
-# The palette the platform handed us at startup, so 'System' has something to go back to.
-_system_palette: QPalette | None = None
-
-
 def apply_scheme(name: str) -> None:
-    """Force light or dark, or hand control back to the OS with 'System'.
+    """Force light or dark, or follow the OS with 'System'.
 
-    setColorScheme alone is enough on Windows and macOS but does nothing under X11/Wayland, so the
-    palette is set explicitly too. The cost is that 'System' restores the palette captured at
-    startup rather than tracking a later OS theme change - restart to pick that up.
+    setColorScheme alone is enough for the title bar on Windows but draws nothing under X11/Wayland,
+    so the palette is always set explicitly too.
     """
-    global _system_palette
     app = QApplication.instance()
     if app is None:
         return
-    if _system_palette is None:
-        _system_palette = QPalette(app.palette())
-
-    QGuiApplication.styleHints().setColorScheme(SCHEMES.get(name, Qt.ColorScheme.Unknown))
-    if name == "Dark":
-        app.setPalette(_dark_palette())
-    elif name == "Light":
-        app.setPalette(QStyleFactory.create("Fusion").standardPalette())
-    else:
-        app.setPalette(_system_palette)
-    app.setStyleSheet(STYLESHEET)  # re-resolve the palette(...) references against the new palette
+    hints = QGuiApplication.styleHints()
+    hints.setColorScheme(SCHEMES.get(name, Qt.ColorScheme.Unknown))
+    effective = hints.colorScheme() if name == "System" else SCHEMES[name]
+    app.setPalette(_palette(DARK if effective == Qt.ColorScheme.Dark else LIGHT))
+    app.setStyleSheet(stylesheet(app.style().name()))

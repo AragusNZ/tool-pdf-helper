@@ -6,10 +6,10 @@ from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, Slot
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFontDatabase, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFont, QFontDatabase, QGuiApplication, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
-    QPushButton, QVBoxLayout, QWidget,
+    QPushButton, QStyleFactory, QVBoxLayout, QWidget,
 )
 
 from pdf_helper import __version__
@@ -45,8 +45,8 @@ class MainWindow(QMainWindow):
 
         self._build_menus()
         layout = QVBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)  # Fluent: 16epx surface to edge, 12 between cards
+        layout.setSpacing(12)
         layout.addWidget(self._files_group(), stretch=3)
         layout.addWidget(self._actions_group())
         layout.addWidget(self._log_group(), stretch=2)
@@ -63,9 +63,10 @@ class MainWindow(QMainWindow):
     # --- construction ------------------------------------------------------
     def _files_group(self) -> QGroupBox:
         hint = QLabel("Drop files here, or drag to reorder.")
-        hint.setEnabled(False)  # dimmed by the style rather than a hardcoded grey
+        hint.setForegroundRole(QPalette.ColorRole.PlaceholderText)  # secondary text, not disabled text
 
         buttons = QHBoxLayout()
+        buttons.setSpacing(8)  # Fluent: 8epx between buttons
         for text, fn in (("Add files...", self._add_files), ("Remove", self.queue.remove_selected), ("Clear", self.queue.clear)):
             b = QPushButton(text)
             b.clicked.connect(fn)
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow):
         buttons.addStretch()
 
         inner = QVBoxLayout()
+        inner.setSpacing(8)
         inner.addWidget(hint)
         inner.addWidget(self.queue)
         inner.addLayout(buttons)
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
     def _actions_group(self) -> QGroupBox:
         self.feature_buttons: list[tuple[Feature, QPushButton]] = []
         grid = QGridLayout()
-        grid.setSpacing(6)
+        grid.setSpacing(8)
         for i, feature in enumerate(FEATURES):
             b = QPushButton(feature.label)
             b.setToolTip(feature.tooltip)
@@ -190,11 +192,16 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def log(self, message: str) -> None:
         if message.startswith("ERROR"):
-            # One red per scheme: the dark one would be muddy on white, the light one dim on black.
-            red = "#ff6b6b" if self.palette().base().color().lightness() < 128 else "#c0272d"
+            red = self.palette().brightText().color().name()  # SystemFillColorCritical for this scheme
             self.log_view.appendHtml(f'<span style="color:{red};">{escape(message)}</span>')
         else:
             self.log_view.appendPlainText(message)
+
+
+def _follow_system_scheme(_scheme) -> None:
+    """Repaint when the OS flips light/dark, but only while the app is set to follow it."""
+    if settings().value("theme", "System") == "System":
+        apply_scheme("System")
 
 
 def _excepthook(exc_type, exc, tb) -> None:
@@ -207,8 +214,14 @@ def main() -> None:
     sys.excepthook = _excepthook
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(asset_path("icon.ico"))))
-    app.setStyle("Fusion")  # same widget look on Windows and WSL; must precede apply_scheme
+    # The native Windows 11 style draws Fluent controls properly; Fusion is the fallback elsewhere.
+    app.setStyle("windows11" if "windows11" in QStyleFactory.keys() else "Fusion")
+    if "Segoe UI Variable Text" in QFontDatabase.families():
+        font = QFont("Segoe UI Variable Text")
+        font.setPointSizeF(10.5)  # Windows 11 Body: 14px regular
+        app.setFont(font)
     apply_scheme(settings().value("theme", "System"))  # also installs the stylesheet
+    QGuiApplication.styleHints().colorSchemeChanged.connect(_follow_system_scheme)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

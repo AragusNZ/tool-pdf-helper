@@ -170,14 +170,21 @@ def test_icon_asset_is_a_valid_ico(qapp):
     assert data[:4] == b"\x00\x00\x01\x00"  # ICO header: reserved=0, type=1 (icon)
 
 
-def test_apply_scheme_switches_and_restores(qapp):
-    original = qapp.palette().window().color().name()
+def test_apply_scheme_uses_the_winui_surface_colours(qapp):
+    # The exact values pin the palette to WinUI's SolidBackgroundFillColorBase.
     theme.apply_scheme("Dark")
-    assert qapp.palette().window().color().lightness() < 128
+    assert qapp.palette().window().color().name() == "#202020"
+    assert qapp.palette().brightText().color().name() == "#ff99a4"  # SystemFillColorCritical
     theme.apply_scheme("Light")
-    assert qapp.palette().window().color().lightness() > 128
-    theme.apply_scheme("System")
-    assert qapp.palette().window().color().name() == original
+    assert qapp.palette().window().color().name() == "#f3f3f3"
+    theme.apply_scheme("System")  # no OS scheme offscreen, so light
+    assert qapp.palette().window().color().name() == "#f3f3f3"
+
+
+def test_stylesheet_leaves_controls_to_the_native_style(qapp):
+    native, fusion = theme.stylesheet("windows11"), theme.stylesheet("fusion")
+    assert "QGroupBox" in native and "QPushButton" not in native
+    assert "QGroupBox" in fusion and "QPushButton" in fusion
 
 
 # --- PlaceDialog ------------------------------------------------------------

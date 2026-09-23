@@ -20,8 +20,9 @@ Features:
 
 Fonts for **Add text**: the 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the `pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). They are embedded in the PDF, so the output renders the same anywhere.
 
-**View > Theme** switches between System, Light and Dark; the choice is remembered. System follows the OS on
-Windows and macOS - on Linux it falls back to the palette in use at startup.
+**View > Theme** switches between System, Light and Dark; the choice is remembered. On System the app follows the
+Windows light/dark setting and repaints when it changes. On Windows the native Windows 11 widget style draws the
+controls; elsewhere it falls back to Fusion with the same colours.
 
 Outputs never overwrite the source file. Create PDF(s) and PDF to Word skip a file whose target already exists.
 A failure on one file is logged and the rest of the queue still runs. Full tracebacks go to `PdfHelper.log` in the
