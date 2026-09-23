@@ -2,13 +2,14 @@ import logging
 import sys
 import tempfile
 from functools import partial
+from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import Qt, QSettings, Slot
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFontDatabase, QIcon
 from PySide6.QtWidgets import (
-    QApplication, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout,
-    QWidget,
+    QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
+    QPushButton, QVBoxLayout, QWidget,
 )
 
 from pdf_helper import __version__
@@ -17,49 +18,109 @@ from pdf_helper.features import FEATURES
 from pdf_helper.features.base import Feature, FeatureContext
 from pdf_helper.ui.dialogs import open_file_paths
 from pdf_helper.ui.file_queue import FileQueue
+from pdf_helper.ui.theme import apply_scheme, asset_path
 from pdf_helper.ui.worker import Worker
 
 LOG_FILE = Path(tempfile.gettempdir()) / "PdfHelper.log"  # tracebacks land here; the exe has no console
+GRID_COLUMNS = 4
 log = logging.getLogger(__name__)
+
+
+def settings() -> QSettings:
+    return QSettings("pdf-helper", "PdfHelper")
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"PDF Helper {__version__}")
-        self.resize(720, 560)
+        self.resize(760, 620)
+        self.setMinimumSize(640, 480)
         self._worker: Worker | None = None
 
         self.queue = FileQueue()
         self.queue.changed.connect(self._refresh_buttons)
         self.log_view = QPlainTextEdit(readOnly=True, maximumBlockCount=5000)
+        self.log_view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
 
-        queue_buttons = QHBoxLayout()
+        self._build_menus()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        layout.addWidget(self._files_group(), stretch=3)
+        layout.addWidget(self._actions_group())
+        layout.addWidget(self._log_group(), stretch=2)
+        root = QWidget()
+        root.setLayout(layout)
+        self.setCentralWidget(root)
+
+        self.progress = QProgressBar(maximumWidth=140, textVisible=False)
+        self.progress.setRange(0, 0)  # indeterminate: features report no percentage
+        self.progress.hide()
+        self.statusBar().addPermanentWidget(self.progress)
+        self._refresh_buttons()
+
+    # --- construction ------------------------------------------------------
+    def _files_group(self) -> QGroupBox:
+        hint = QLabel("Drop files here, or drag to reorder.")
+        hint.setEnabled(False)  # dimmed by the style rather than a hardcoded grey
+
+        buttons = QHBoxLayout()
         for text, fn in (("Add files...", self._add_files), ("Remove", self.queue.remove_selected), ("Clear", self.queue.clear)):
             b = QPushButton(text)
             b.clicked.connect(fn)
-            queue_buttons.addWidget(b)
-        queue_buttons.addStretch()
+            buttons.addWidget(b)
+        buttons.addStretch()
 
+        inner = QVBoxLayout()
+        inner.addWidget(hint)
+        inner.addWidget(self.queue)
+        inner.addLayout(buttons)
+        group = QGroupBox("Files")
+        group.setLayout(inner)
+        return group
+
+    def _actions_group(self) -> QGroupBox:
         self.feature_buttons: list[tuple[Feature, QPushButton]] = []
-        feature_grid = QGridLayout()
+        grid = QGridLayout()
+        grid.setSpacing(6)
         for i, feature in enumerate(FEATURES):
             b = QPushButton(feature.label)
             b.setToolTip(feature.tooltip)
             b.clicked.connect(partial(self._run_feature, feature))
-            feature_grid.addWidget(b, i // 4, i % 4)
+            grid.addWidget(b, i // GRID_COLUMNS, i % GRID_COLUMNS)
             self.feature_buttons.append((feature, b))
+        for column in range(GRID_COLUMNS):
+            grid.setColumnStretch(column, 1)  # equal-width buttons whatever the label length
+        group = QGroupBox("Actions")
+        group.setLayout(grid)
+        return group
 
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Drop files here (drag to reorder):"))
-        layout.addWidget(self.queue, stretch=3)
-        layout.addLayout(queue_buttons)
-        layout.addLayout(feature_grid)
-        layout.addWidget(self.log_view, stretch=2)
-        root = QWidget()
-        root.setLayout(layout)
-        self.setCentralWidget(root)
-        self._refresh_buttons()
+    def _log_group(self) -> QGroupBox:
+        inner = QVBoxLayout()
+        inner.addWidget(self.log_view)
+        group = QGroupBox("Log")
+        group.setLayout(inner)
+        return group
+
+    def _build_menus(self) -> None:
+        theme_menu = self.menuBar().addMenu("&View").addMenu("&Theme")
+        group = QActionGroup(self)
+        current = settings().value("theme", "System")
+        for name in ("System", "Light", "Dark"):
+            action = QAction(name, self, checkable=True, checked=(name == current))
+            action.triggered.connect(partial(self._set_theme, name))
+            group.addAction(action)
+            theme_menu.addAction(action)
+        help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction(QAction("&About", self, triggered=self._about))
+
+    def _set_theme(self, name: str) -> None:
+        settings().setValue("theme", name)
+        apply_scheme(name)
+
+    def _about(self) -> None:
+        QMessageBox.about(self, "PDF Helper", f"PDF Helper {__version__}\n\nLog file: {LOG_FILE}")
 
     # --- queue -------------------------------------------------------------
     def _add_files(self) -> None:
@@ -74,6 +135,7 @@ class MainWindow(QMainWindow):
         busy = self._worker is not None
         for feature, button in self.feature_buttons:
             button.setEnabled(not busy and feature.enabled_for(files))
+        self.statusBar().showMessage("Working..." if busy else f"{len(files)} file(s) queued")
 
     # --- features ----------------------------------------------------------
     def _run_feature(self, feature: Feature) -> None:
@@ -98,6 +160,7 @@ class MainWindow(QMainWindow):
         self._worker.failed.connect(self._on_failed)
         self._worker.finished.connect(self._on_finished)
         self._refresh_buttons()
+        self.progress.show()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self._worker.start()
 
@@ -108,6 +171,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_finished(self) -> None:
         QApplication.restoreOverrideCursor()
+        self.progress.hide()
         self.log("done")
         if self._worker is not None:
             self._worker.deleteLater()
@@ -125,7 +189,12 @@ class MainWindow(QMainWindow):
     # --- logging -----------------------------------------------------------
     @Slot(str)
     def log(self, message: str) -> None:
-        self.log_view.appendPlainText(message)
+        if message.startswith("ERROR"):
+            # One red per scheme: the dark one would be muddy on white, the light one dim on black.
+            red = "#ff6b6b" if self.palette().base().color().lightness() < 128 else "#c0272d"
+            self.log_view.appendHtml(f'<span style="color:{red};">{escape(message)}</span>')
+        else:
+            self.log_view.appendPlainText(message)
 
 
 def _excepthook(exc_type, exc, tb) -> None:
@@ -137,6 +206,9 @@ def main() -> None:
     logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.excepthook = _excepthook
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(str(asset_path("icon.ico"))))
+    app.setStyle("Fusion")  # same widget look on Windows and WSL; must precede apply_scheme
+    apply_scheme(settings().value("theme", "System"))  # also installs the stylesheet
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QUrl
 
-from pdf_helper.ui import dialogs
+from pdf_helper.ui import dialogs, theme
 from pdf_helper.ui.file_queue import FileQueue
 from pdf_helper.ui.worker import Worker
 
@@ -156,3 +156,19 @@ def test_worker_run_body_directly(qapp):
     w.failed.connect(seen.append)
     w.run()
     assert seen and "inline" in seen[0]
+
+
+# --- theme and assets -------------------------------------------------------
+def test_icon_asset_is_a_valid_ico(qapp):
+    data = theme.asset_path("icon.ico").read_bytes()
+    assert data[:4] == b"\x00\x00\x01\x00"  # ICO header: reserved=0, type=1 (icon)
+
+
+def test_apply_scheme_switches_and_restores(qapp):
+    original = qapp.palette().window().color().name()
+    theme.apply_scheme("Dark")
+    assert qapp.palette().window().color().lightness() < 128
+    theme.apply_scheme("Light")
+    assert qapp.palette().window().color().lightness() > 128
+    theme.apply_scheme("System")
+    assert qapp.palette().window().color().name() == original

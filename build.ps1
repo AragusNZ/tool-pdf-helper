@@ -14,7 +14,8 @@ if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 $version = & $py -c "import pdf_helper; print(pdf_helper.__version__)"
 $name = 'PdfHelper'
 
-& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
+& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --icon pdf_helper\assets\icon.ico `
+    --add-data "pdf_helper\assets;pdf_helper\assets" --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 
 $stage = "dist\$name"

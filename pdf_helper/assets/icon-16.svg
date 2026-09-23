@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- 16px variant: same shape, no lettering. "PDF" is unreadable below ~24px and just smears. -->
+  <path d="M40 16h116l60 60v164a8 8 0 0 1-8 8H40a8 8 0 0 1-8-8V24a8 8 0 0 1 8-8z" fill="#f7f7f5"/>
+  <path d="M156 16l60 60h-52a8 8 0 0 1-8-8V16z" fill="#c9c9c2"/>
+  <path d="M40 16h116l60 60v164a8 8 0 0 1-8 8H40a8 8 0 0 1-8-8V24a8 8 0 0 1 8-8z" fill="none" stroke="#8a8a82" stroke-width="10"/>
+  <rect x="20" y="140" width="216" height="84" rx="8" fill="#c8322b"/>
+</svg>

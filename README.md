@@ -16,6 +16,9 @@ Features:
 - **Replace text** – find and replace a string on every page, case-insensitive by default. Writes `<name>-replaced.pdf`. Replacements are drawn in Helvetica at the original size and colour; longer text is shrunk to fit.
 - **PDF to Word** – `.docx` via pdf2docx. Layout approximate. This dependency pulls in numpy + OpenCV and adds roughly 100 MB to the exe.
 
+**View > Theme** switches between System, Light and Dark; the choice is remembered. System follows the OS on
+Windows and macOS - on Linux it falls back to the palette in use at startup.
+
 Outputs never overwrite the source file. Create PDF(s) and PDF to Word skip a file whose target already exists.
 A failure on one file is logged and the rest of the queue still runs. Full tracebacks go to `PdfHelper.log` in the
 system temp folder (`%TEMP%` on Windows); the log pane shows the path after any error.
@@ -45,6 +48,9 @@ Always built with Windows Python, PyInstaller cannot cross-compile.
 - From Windows: double-click `build.cmd` or run `build.ps1`.
 
 Output: `dist\PdfHelper\PdfHelper.exe` plus `dist\PdfHelper-<version>.zip` and its `.sha256`. Copy `dist\` across.
+
+The exe and window icon come from `pdf_helper/assets/icon.ico`. After editing `icon.svg` or `icon-16.svg`, regenerate
+it with `python tools/make_icon.py` and commit the result.
 
 Set `PDF_HELPER_NO_COM=1` to force the LibreOffice path when testing.
 
