@@ -115,3 +115,45 @@ def test_add_image_rejects_empty_rect(make_pdf, make_png, tmp_path: Path):
 
 def test_image_size(make_png):
     assert image_size(make_png("s.png", 24)) == (24, 24)
+
+
+def test_replace_text_shrinks_instead_of_wrapping(tmp_path: Path):
+    """A replacement longer than the original used to wrap inside the old box: "eleph" / "ant"."""
+    src = tmp_path / "src.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((72, 72), "one cat two")
+        doc.save(src)
+    out = tmp_path / "out.pdf"
+    assert replace_text(src, "cat", "elephant", out) == 1
+    with pymupdf.open(out) as doc:
+        spans = [s for b in doc[0].get_text("dict")["blocks"] for l in b["lines"] for s in l["spans"]]
+    words = [s["text"] for s in spans]
+    assert "elephant" in words and "cat" not in "".join(words)
+    assert [s["size"] for s in spans if s["text"] == "elephant"][0] < 11  # shrunk to fit the old box
+
+
+def test_replace_text_with_nothing_deletes_it(tmp_path: Path):
+    src = tmp_path / "src.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((72, 72), "one cat two")
+        doc.save(src)
+    out = tmp_path / "out.pdf"
+    assert replace_text(src, "cat", "", out) == 1
+    with pymupdf.open(out) as doc:
+        assert "cat" not in doc[0].get_text()
+
+
+def test_add_text_writes_a_repeated_page_once(make_pdf, tmp_path: Path):
+    out = tmp_path / "t.pdf"
+    add_text(make_pdf("a.pdf", 2), out, "HELLO", (72, 144), [0, 0])
+    with pymupdf.open(out) as doc:
+        spans = [s for b in doc[0].get_text("dict")["blocks"] for l in b["lines"] for s in l["spans"]]
+    assert [s["text"] for s in spans].count("HELLO") == 1
+
+
+def test_render_pages_never_overwrites_an_earlier_run(make_pdf, tmp_path: Path):
+    src = make_pdf("r.pdf", 1)
+    render_pages(src, tmp_path, dpi=72)
+    again = render_pages(src, tmp_path, dpi=72)
+    assert [f.name for f in again] == ["r-p001 (2).png"]
+

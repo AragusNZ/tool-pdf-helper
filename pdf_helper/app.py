@@ -1,4 +1,5 @@
 import logging
+import logging.handlers
 import sys
 import tempfile
 from functools import partial
@@ -6,7 +7,10 @@ from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSettings, Slot
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QFont, QFontDatabase, QGuiApplication, QIcon, QPalette
+from PySide6.QtGui import (
+    QAction, QActionGroup, QCloseEvent, QFont, QFontDatabase, QGuiApplication, QIcon, QKeySequence, QPalette,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
     QPushButton, QStyleFactory, QVBoxLayout, QWidget,
@@ -64,6 +68,9 @@ class MainWindow(QMainWindow):
     def _files_group(self) -> QGroupBox:
         hint = QLabel("Drop files here, or drag to reorder.")
         hint.setForegroundRole(QPalette.ColorRole.PlaceholderText)  # secondary text, not disabled text
+
+        delete = QShortcut(QKeySequence.StandardKey.Delete, self.queue, activated=self.queue.remove_selected)
+        delete.setContext(Qt.ShortcutContext.WidgetShortcut)  # only while the queue has focus
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)  # Fluent: 8epx between buttons
@@ -126,11 +133,14 @@ class MainWindow(QMainWindow):
 
     # --- queue -------------------------------------------------------------
     def _add_files(self) -> None:
-        self._report_skipped(self.queue.add_paths(open_file_paths(self, supported_extensions())))
+        paths = open_file_paths(self, supported_extensions(), settings().value("last_dir", ""))
+        if paths:
+            settings().setValue("last_dir", str(paths[0].parent))
+        self._report_skipped(self.queue.add_paths(paths))
 
     def _report_skipped(self, skipped) -> None:
         for p in skipped:
-            self.log(f"skipped unsupported file {p.name}")
+            self.log(f"skipped {p.name}")  # unsupported, or gone since it was picked
 
     def _refresh_buttons(self) -> None:
         files = self.queue.paths()
@@ -210,7 +220,8 @@ def _excepthook(exc_type, exc, tb) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=1, encoding="utf-8")
+    logging.basicConfig(handlers=[handler], level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.excepthook = _excepthook
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(asset_path("icon.ico"))))

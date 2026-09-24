@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from pdf_helper.core.docx import to_docx
+from pdf_helper.core.paths import fresh
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
 from pdf_helper.ui.dialogs import choose_directory
 
@@ -13,10 +14,7 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 def run(ctx: FeatureContext, out_dir: Path) -> None:
     def one(src: Path) -> None:
-        out = out_dir / f"{src.stem}.docx"
-        if out.exists():
-            ctx.log(f"skip {src.name}: {out.name} already exists")
-            return
+        out = fresh(out_dir / f"{src.stem}.docx")
         to_docx(src, out)
         ctx.log(f"{src.name} -> {out}")
 

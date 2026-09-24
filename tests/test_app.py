@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from PySide6.QtGui import QShortcut
+
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
 from pdf_helper.features import FEATURES
@@ -43,7 +45,7 @@ def test_add_files_reports_skipped(qapp, monkeypatch, make_pdf, tmp_path: Path):
     monkeypatch.setattr(app_module, "open_file_paths", lambda *a: [pdf, bad])
     w = MainWindow()
     w._add_files()
-    assert w.queue.paths() == [pdf] and "skipped unsupported file x.zip" in w.log_view.toPlainText()
+    assert w.queue.paths() == [pdf] and "skipped x.zip" in w.log_view.toPlainText()
 
 
 def test_feature_runs_on_worker_and_logs(qapp, make_pdf):
@@ -112,3 +114,33 @@ def test_close_refused_while_busy(qapp, make_pdf):
     ev = QCloseEvent()
     w.closeEvent(ev)
     assert ev.isAccepted()
+
+
+def test_delete_key_removes_the_selected_files(qapp, make_pdf):
+    w = MainWindow()
+    a, b = make_pdf("a.pdf", 1), make_pdf("b.pdf", 1)
+    w.queue.add_paths([a, b])
+    w.queue.item(0).setSelected(True)
+    shortcut = next(s for s in w.queue.children() if isinstance(s, QShortcut))
+    shortcut.activated.emit()
+    assert w.queue.paths() == [b]
+
+
+def test_add_files_remembers_the_folder(qapp, monkeypatch, make_pdf):
+    pdf = make_pdf("a.pdf", 1)
+    starts: list[str] = []
+
+    def picker(parent, exts, start=""):
+        starts.append(start)
+        return [pdf] if not starts[:-1] else []
+
+    monkeypatch.setattr(app_module, "open_file_paths", picker)
+    app_module.settings().remove("last_dir")
+    try:
+        w = MainWindow()
+        w._add_files()  # nothing remembered yet
+        w._add_files()  # now it opens where the first batch came from
+        assert starts == ["", str(pdf.parent)]
+    finally:
+        app_module.settings().remove("last_dir")
+

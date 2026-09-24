@@ -11,9 +11,9 @@ def save_pdf_path(parent: QWidget | None, suggested: Path) -> Path | None:
     return path if path.suffix.lower() == ".pdf" else path.with_suffix(".pdf")
 
 
-def open_file_paths(parent: QWidget | None, exts: frozenset[str]) -> list[Path]:
+def open_file_paths(parent: QWidget | None, exts: frozenset[str], start: str = "") -> list[Path]:
     pattern = " ".join(f"*{e}" for e in sorted(exts))
-    names, _ = QFileDialog.getOpenFileNames(parent, "Add files", "", f"Supported ({pattern});;All files (*)")
+    names, _ = QFileDialog.getOpenFileNames(parent, "Add files", start, f"Supported ({pattern});;All files (*)")
     return [Path(n) for n in names]
 
 

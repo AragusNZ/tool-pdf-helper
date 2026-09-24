@@ -7,12 +7,32 @@ All notable changes to this project are documented here, in
 
 ### Fixed
 
+- Merging into a file that was also an input silently replaced that input. Writing a PDF over one of its own source
+  files is now refused with a plain message, in Merge, Extract pages and Rotate.
+- A page named twice in a page spec, as in `1,1`, was acted on twice: Rotate turned it 180 instead of 90, and Add
+  text and Add image drew on top of themselves. Extract pages still honours repeats, which is what a spec like
+  `3,1,1` is for.
+- Replace text wrapped a longer replacement inside the old box (`elephant` came out as `eleph` / `ant`) despite the
+  documentation promising it was shrunk to fit. It is now drawn on one line at a size that fits.
+- The queue accepted a file that did not exist, which then failed on the worker thread once the job started.
+- The page preview in Add text and Add image reported a placement point for a click past the edge of the page image.
 - `pytest` collected nothing outside an installed checkout — every test module failed on
   `No module named 'pdf_helper'`, so the `check` workflow was red. `pythonpath = ["."]` in
   `pyproject.toml` puts the repo root on `sys.path`.
 
+### Changed
+
+- No output ever replaces an existing file. A name that is taken gets ` (2)`, ` (3)` and so on appended, which
+  replaces the "skip a file whose target already exists" behaviour of Create PDF(s) and PDF to Word and covers every
+  other action, including a second run into the same folder.
+
 ### Added
 
+- Create PDF(s) and Merge ask what page images go on: Auto (A4 turned to match the picture), Image size (a page the
+  size of the image, as before), or A4, A3, A5, Letter, Legal, HD 1920x1080 or 4K 3840x2160 with a portrait,
+  landscape or match-the-image orientation. A multi-page TIFF gets one page per frame.
+- The file queue takes the Delete key, and Add files... opens where the last batch came from.
+- `PdfHelper.log` is capped at 1 MB with one previous copy kept, rather than growing without limit.
 - `tests/test_pipeline.py` — end-to-end runs of the real features through `MainWindow`: queue,
   button gating, dialogs, worker thread and the files on disk, including a batch where one PDF is
   unreadable and the rest must still run. Plus the `main()` entry point, the theme menu and the

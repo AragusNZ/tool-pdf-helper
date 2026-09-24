@@ -4,6 +4,8 @@ The unit tests call feature.run() directly; these go through the window, so a br
 between the queue, the button gating, the dialogs and the worker thread shows up here.
 """
 
+import logging
+import logging.handlers
 from pathlib import Path
 
 import pytest
@@ -11,7 +13,8 @@ import pytest
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
 from pdf_helper.core.pdf import page_count
-from pdf_helper.features import merge, split, to_images, watermark
+from pdf_helper.core.convert import IMAGE_SIZE
+from pdf_helper.features import create_pdf, merge, split, to_images, watermark
 
 
 def _run(window: MainWindow, label: str, qapp) -> str:
@@ -27,6 +30,7 @@ def _run(window: MainWindow, label: str, qapp) -> str:
 def test_merge_pipeline(qapp, make_pdf, make_png, tmp_path: Path, monkeypatch):
     out = tmp_path / "merged.pdf"
     monkeypatch.setattr(merge, "save_pdf_path", lambda *a: out)
+    monkeypatch.setattr(create_pdf, "ask_choice", lambda *a: IMAGE_SIZE)
     w = MainWindow()
     w.queue.add_paths([make_pdf("a.pdf", 2), make_png(), make_pdf("b.pdf", 1)])
 
@@ -116,6 +120,8 @@ def test_excepthook_logs_and_shows_dialog(monkeypatch, qapp, caplog):
 def test_main_builds_and_shows_the_window(monkeypatch, qapp):
     """The exe entry point: everything main() touches must exist (icon, style, theme, window)."""
     shown = []
+    logging_setup: dict = {}
+    monkeypatch.setattr(app_module.logging, "basicConfig", lambda **kw: logging_setup.update(kw))
     monkeypatch.setattr(app_module.QApplication, "__new__", lambda cls, argv: qapp)
     monkeypatch.setattr(app_module.QApplication, "__init__", lambda self, argv: None)
     monkeypatch.setattr(app_module.QApplication, "exec", lambda self: 0)
@@ -123,6 +129,8 @@ def test_main_builds_and_shows_the_window(monkeypatch, qapp):
     with pytest.raises(SystemExit) as exc:
         app_module.main()
     assert exc.value.code == 0 and len(shown) == 1
+    handler = logging_setup["handlers"][0]  # the log file cannot grow forever
+    assert isinstance(handler, logging.handlers.RotatingFileHandler) and handler.maxBytes == 1_000_000
 
 
 def test_theme_menu_and_about(qapp, monkeypatch):

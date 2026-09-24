@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pdf_helper.core.paths import fresh
 from pdf_helper.core.stamp import watermark
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
 from pdf_helper.ui.dialogs import ask_text, choose_directory
@@ -19,7 +20,7 @@ def run(ctx: FeatureContext, params: tuple[str, Path]) -> None:
     text, out_dir = params
 
     def one(src: Path) -> None:
-        out = out_dir / f"{src.stem}-stamped.pdf"
+        out = fresh(out_dir / f"{src.stem}-stamped.pdf")
         watermark(src, text, out)
         ctx.log(f"{src.name}: stamped -> {out}")
 

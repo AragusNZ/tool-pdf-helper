@@ -23,13 +23,13 @@ class FileQueue(QListWidget):
         return [Path(self.item(i).text()) for i in range(self.count())]
 
     def add_paths(self, paths: list[Path]) -> list[Path]:
-        """Add supported files (directories expanded one level). Returns what was skipped."""
+        """Add existing supported files (directories expanded one level). Returns what was skipped."""
         skipped: list[Path] = []
         existing = set(self.paths())
         for p in paths:
             candidates = sorted(c for c in p.iterdir() if c.is_file()) if p.is_dir() else [p]
             for c in candidates:
-                if not is_supported(c):
+                if not c.is_file() or not is_supported(c):
                     skipped.append(c)
                 elif c not in existing:
                     self.addItem(str(c))

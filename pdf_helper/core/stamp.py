@@ -53,9 +53,10 @@ def add_text(
 
     The text box runs from ``pos`` to the bottom-right of the page, so long text wraps.
     Coordinates are in the page's displayed space: a rotated page needs no correction.
+    A page named twice in the spec is written once.
     """
     with open_pdf(src) as doc:
-        for i in range(doc.page_count) if pages is None else pages:
+        for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
             page = doc[i]
             box = pymupdf.Rect(pos[0], pos[1], page.rect.x1, page.rect.y1)
             if box.is_empty or box.is_infinite:
@@ -71,7 +72,7 @@ def add_image(src: Path, out: Path, image: Path, rect: tuple[float, float, float
     if target.is_empty or target.is_infinite:
         raise ValueError(f"image rectangle {rect} is empty")
     with open_pdf(src) as doc:
-        for i in range(doc.page_count) if pages is None else pages:
+        for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
             doc[i].insert_image(target, filename=str(image), keep_proportion=True)
         doc.save(out)
 

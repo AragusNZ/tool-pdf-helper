@@ -3,7 +3,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from pdf_helper.core.pdf import merge, page_count, select_pages
+from pdf_helper.core.pdf import merge, page_count, rotate, select_pages
 
 
 def test_merge_keeps_order(make_pdf, tmp_path: Path):
@@ -37,3 +37,18 @@ def test_open_pdf_rejects_password_protected(make_pdf, tmp_path: Path):
         open_pdf(locked)
     with pytest.raises(ValueError, match="password-protected"):
         page_count(locked)
+
+
+def test_writing_over_an_input_is_refused(make_pdf, tmp_path: Path):
+    """The old behaviour silently replaced the source with the merged file."""
+    a, b = make_pdf("a.pdf", 2), make_pdf("b.pdf", 3)
+    for call in (lambda: merge([a, b], a), lambda: select_pages(a, [0], a), lambda: rotate(a, 90, None, a)):
+        with pytest.raises(ValueError, match="a.pdf is one of the input files"):
+            call()
+    assert page_count(a) == 2  # untouched
+
+
+def test_writing_over_an_input_compares_resolved_paths(make_pdf, tmp_path: Path):
+    a = make_pdf("a.pdf", 1)
+    with pytest.raises(ValueError, match="one of the input files"):
+        merge([a], tmp_path / "sub" / ".." / "a.pdf")

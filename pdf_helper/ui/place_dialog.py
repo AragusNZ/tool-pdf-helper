@@ -10,12 +10,12 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+from pdf_helper.core.convert import IMAGE_EXTS
 from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM, fonts, image_size
 
-IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp")
 OUTLINE = QColor("#c0272d")
 
 
@@ -50,9 +50,11 @@ class _Preview(QLabel):
         self.setPixmap(pixmap)
 
     def mousePressEvent(self, event) -> None:
+        # A click past the page image (the dialog is resizable) is not a point on the page.
         if self.base is not None:
             point = event.position()
-            self.clicked.emit(point.x() / self._scale, point.y() / self._scale)
+            if self.base.rect().contains(point.toPoint()):
+                self.clicked.emit(point.x() / self._scale, point.y() / self._scale)
 
 
 class PlaceDialog(QDialog):
@@ -169,7 +171,7 @@ class PlaceDialog(QDialog):
             self._changed()
 
     def _pick_image(self) -> None:
-        pattern = " ".join(f"*{e}" for e in IMAGE_EXTS)
+        pattern = " ".join(f"*{e}" for e in sorted(IMAGE_EXTS))
         name, _ = QFileDialog.getOpenFileName(self, "Choose image", str(self.src.parent), f"Images ({pattern})")
         if not name:
             return

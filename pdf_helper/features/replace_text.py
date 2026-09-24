@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pdf_helper.core.paths import fresh
 from pdf_helper.core.replace import replace_text
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
 from pdf_helper.ui.dialogs import ask_choice, ask_text, choose_directory
@@ -27,7 +28,7 @@ def run(ctx: FeatureContext, params: Params) -> None:
     old, new, case_sensitive, out_dir = params
 
     def one(src: Path) -> None:
-        out = out_dir / f"{src.stem}-replaced.pdf"
+        out = fresh(out_dir / f"{src.stem}-replaced.pdf")
         n = replace_text(src, old, new, out, case_sensitive=case_sensitive)
         ctx.log(f"{src.name}: {n} replacement(s) -> {out}")
 

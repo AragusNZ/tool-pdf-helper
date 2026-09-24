@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from pdf_helper.core.pages import parse_page_spec
+from pdf_helper.core.paths import fresh
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.stamp import add_text
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
@@ -23,7 +24,7 @@ def run(ctx: FeatureContext, params: tuple) -> None:
 
     def one(src: Path) -> None:
         pages = parse_page_spec(spec, page_count(src)) if spec else None
-        out = out_dir / f"{src.stem}-text.pdf"
+        out = fresh(out_dir / f"{src.stem}-text.pdf")
         add_text(src, out, text, pos, pages, fontname=fontname, size=size, color=color)
         ctx.log(f"{src.name}: text on {'all' if pages is None else len(pages)} page(s) -> {out}")
 

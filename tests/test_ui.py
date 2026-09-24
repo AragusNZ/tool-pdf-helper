@@ -43,6 +43,14 @@ def test_queue_add_dedupe_and_skip(qapp, make_pdf, tmp_path: Path):
     assert q.paths() == [pdf] and fired == [1]
 
 
+def test_queue_rejects_a_file_that_is_not_there(qapp, tmp_path: Path):
+    """A path typed into the dialog, or a file deleted since, must not enter the queue."""
+    q = FileQueue()
+    gone = tmp_path / "gone.pdf"
+    assert q.add_paths([gone]) == [gone]
+    assert q.paths() == []
+
+
 def test_queue_expands_directory(qapp, make_pdf, tmp_path: Path):
     sub = tmp_path / "d"
     sub.mkdir()
@@ -290,3 +298,8 @@ def test_preview_click_maps_pixels_to_points(qapp, make_pdf):
     scale = preview.base.width() / width
     preview.mousePressEvent(_ClickEvent(40 * scale, 90 * scale))
     assert len(seen) == 1 and abs(seen[0][0] - 40) < 0.5 and abs(seen[0][1] - 90) < 0.5
+
+    # Past the page image (the dialog can be resized wider than the page): not a point on the page.
+    preview.mousePressEvent(_ClickEvent(preview.base.width() + 10, 5))
+    preview.mousePressEvent(_ClickEvent(5, preview.base.height() + 10))
+    assert len(seen) == 1

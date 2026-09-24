@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from pdf_helper.core.extract import extract_images, extract_text, write_rtf
+from pdf_helper.core.paths import fresh
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
 from pdf_helper.ui.dialogs import choose_directory
 
@@ -13,7 +14,7 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 def run(ctx: FeatureContext, base: Path) -> None:
     def one(src: Path) -> None:
-        out_dir = base / f"{src.stem}-content"
+        out_dir = fresh(base / f"{src.stem}-content")
         images = extract_images(src, out_dir / "images")
         rtf = out_dir / f"{src.stem}.rtf"
         write_rtf(extract_text(src), rtf)

@@ -46,7 +46,8 @@ and never bump it — a bump is the operator's `dt patch`.
 3. Reusable PDF logic goes in `pdf_helper/core/`, with a test under `tests/`.
 
 `each_file` in `features/base.py` is the batch helper: a failure on one file is logged and the rest
-of the queue still runs. Outputs never overwrite the source file.
+of the queue still runs. Outputs never overwrite anything: `core/pdf.py` refuses a source file as a target,
+and every generated name goes through `fresh` in `core/paths.py`, which appends ` (2)` when it is taken.
 
 ## Conventions that bite
 

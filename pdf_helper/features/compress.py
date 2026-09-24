@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pdf_helper.core.paths import fresh
 from pdf_helper.core.pdf import compress
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
 from pdf_helper.ui.dialogs import ask_choice, choose_directory
@@ -21,7 +22,7 @@ def run(ctx: FeatureContext, params: tuple[int, int, Path]) -> None:
     dpi, quality, out_dir = params
 
     def one(src: Path) -> None:
-        out = out_dir / f"{src.stem}-small.pdf"
+        out = fresh(out_dir / f"{src.stem}-small.pdf")
         compress(src, out, dpi=dpi, quality=quality)
         before, after = src.stat().st_size, out.stat().st_size
         ctx.log(f"{src.name}: {before / 1e6:.2f} MB -> {after / 1e6:.2f} MB ({out})")

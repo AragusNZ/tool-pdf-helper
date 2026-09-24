@@ -5,6 +5,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+from pdf_helper.core.convert import AUTO, IMAGE_SIZE, MATCH
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
     FEATURES, add_image, add_text, compress, create_pdf, extract_content, extract_pages, merge, replace_text, rotate,
@@ -34,8 +35,7 @@ def test_enabled_for_gating(make_pdf, make_png, tmp_path: Path):
 # --- create_pdf -------------------------------------------------------------
 def test_create_pdf_run(make_pdf, make_png, log):
     pdf, png = make_pdf("a.pdf", 1), make_png()
-    assert create_pdf.FEATURE.prepare is None
-    create_pdf.FEATURE.run(FeatureContext([pdf, png], log), None)
+    create_pdf.FEATURE.run(FeatureContext([pdf, png], log), (IMAGE_SIZE, MATCH))
     assert png.with_suffix(".pdf").exists()
     assert log.lines[0].startswith("skip a.pdf") and "created" in log.lines[1]
 
@@ -45,9 +45,11 @@ def test_merge_prepare_and_run(make_pdf, make_png, tmp_path: Path, log, monkeypa
     pdf, png = make_pdf("a.pdf", 2), make_png()
     out = tmp_path / "m.pdf"
     monkeypatch.setattr(merge, "save_pdf_path", lambda parent, suggested: out)
+    monkeypatch.setattr(create_pdf, "ask_choice", lambda *a: IMAGE_SIZE)
     ctx = FeatureContext([pdf, png], log)
-    assert merge.FEATURE.prepare(ctx) == out
-    merge.FEATURE.run(ctx, out)
+    params = merge.FEATURE.prepare(ctx)
+    assert params == (out, IMAGE_SIZE, MATCH)
+    merge.FEATURE.run(ctx, params)
     assert page_count(out) == 3 and "merged 2 files" in log.lines[-1]
 
 
@@ -248,7 +250,7 @@ def test_merge_same_stem_from_different_dirs(make_pdf, tmp_path: Path, log):
     pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 10, 10), False)
     pix.save(b)
     out = tmp_path / "m.pdf"
-    merge.FEATURE.run(FeatureContext([a, b, a], log), out)
+    merge.FEATURE.run(FeatureContext([a, b, a], log), (out, IMAGE_SIZE, MATCH))
     assert page_count(out) == 5
 
 
@@ -262,18 +264,50 @@ def test_batch_continues_after_bad_file(make_pdf, tmp_path: Path, log):
     assert log.lines[0].startswith("ERROR: bad.pdf:") and "stamped" in log.lines[1]
 
 
-def test_create_pdf_skips_existing_target(make_pdf, make_png, log):
+def test_create_pdf_numbers_a_taken_target(make_pdf, make_png, tmp_path: Path, log):
     png = make_png("pic.png")
     existing = make_pdf("pic.pdf", 3)
-    create_pdf.FEATURE.run(FeatureContext([png], log), None)
-    assert page_count(existing) == 3 and "already exists" in log.lines[0]
+    create_pdf.FEATURE.run(FeatureContext([png], log), (IMAGE_SIZE, MATCH))
+    assert page_count(existing) == 3  # the file that was already there is untouched
+    assert (tmp_path / "pic (2).pdf").exists() and "pic (2).pdf" in log.lines[0]
 
 
-def test_to_docx_skips_existing_target(make_pdf, tmp_path: Path, log):
+def test_to_docx_numbers_a_taken_target(make_pdf, tmp_path: Path, log):
     pdf = make_pdf("a.pdf", 1)
     (tmp_path / "a.docx").write_bytes(b"original")
     to_docx.FEATURE.run(FeatureContext([pdf], log), tmp_path)
-    assert (tmp_path / "a.docx").read_bytes() == b"original" and "already exists" in log.lines[0]
+    assert (tmp_path / "a.docx").read_bytes() == b"original"
+    assert (tmp_path / "a (2).docx").exists()
+
+
+def test_create_pdf_page_size_prompt(make_pdf, make_png, log, monkeypatch):
+    asked: list[str] = []
+
+    def ask(parent, title, prompt, options):
+        asked.append(prompt)
+        return options[0] if prompt.startswith("Put") else "Landscape"
+
+    monkeypatch.setattr(create_pdf, "ask_choice", ask)
+    # No image in the queue: no question, and the default page size comes back.
+    assert create_pdf.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) == (IMAGE_SIZE, MATCH)
+    assert asked == []
+    # An image: the size is asked, and AUTO settles orientation by itself.
+    assert create_pdf.FEATURE.prepare(FeatureContext([make_png()], log)) == (AUTO, MATCH)
+    assert asked == ["Put images on:"]
+
+
+def test_create_pdf_asks_orientation_for_a_fixed_size(make_png, log, monkeypatch):
+    answers = iter(["A4", "Landscape"])
+    monkeypatch.setattr(create_pdf, "ask_choice", lambda *a: next(answers))
+    assert create_pdf.FEATURE.prepare(FeatureContext([make_png()], log)) == ("A4", "Landscape")
+
+
+def test_create_pdf_cancel(make_png, log, monkeypatch):
+    monkeypatch.setattr(create_pdf, "ask_choice", lambda *a: None)
+    assert create_pdf.FEATURE.prepare(FeatureContext([make_png()], log)) is None
+    answers = iter(["A4", None])
+    monkeypatch.setattr(create_pdf, "ask_choice", lambda *a: next(answers))
+    assert create_pdf.FEATURE.prepare(FeatureContext([make_png()], log)) is None
 
 
 def test_extract_pages_prompt_carries_hint(make_pdf, tmp_path: Path, log, monkeypatch):
