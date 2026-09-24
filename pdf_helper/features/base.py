@@ -26,6 +26,7 @@ class Feature:
     max_files: int | None = None
     exts: frozenset[str] | None = None  # None = any supported extension
     tooltip: str = ""
+    group: str = "Convert"  # the Actions tab this button lives on, in registry order
 
     def enabled_for(self, files: list[Path]) -> bool:
         n = len(files)

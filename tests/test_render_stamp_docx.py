@@ -4,9 +4,13 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+from pdf_helper.core.convert import PAGE_SIZES
+from pdf_helper.core.impose import impose
 from pdf_helper.core.render import render_page_png, render_pages
 from pdf_helper.core.replace import replace_text
-from pdf_helper.core.stamp import add_image, add_text, fonts, image_size, watermark
+from pdf_helper.core.stamp import (
+    NUMBER_FORMATS, NUMBER_POSITIONS, add_image, add_text, fonts, image_size, page_numbers, watermark,
+)
 
 
 def test_render_pages(make_pdf, tmp_path: Path):
@@ -157,3 +161,58 @@ def test_render_pages_never_overwrites_an_earlier_run(make_pdf, tmp_path: Path):
     again = render_pages(src, tmp_path, dpi=72)
     assert [f.name for f in again] == ["r-p001 (2).png"]
 
+
+
+# --- page numbers -----------------------------------------------------------
+def test_page_numbers_every_page(make_pdf, tmp_path: Path):
+    out = tmp_path / "n.pdf"
+    page_numbers(make_pdf("a.pdf", 3), out, fmt=NUMBER_FORMATS["1 of 10"])
+    with pymupdf.open(out) as doc:
+        assert [p.get_text().split("\n")[-2] for p in doc] == ["1 of 3", "2 of 3", "3 of 3"]
+
+
+@pytest.mark.parametrize("position", NUMBER_POSITIONS)
+def test_page_numbers_positions_stay_on_the_page(make_pdf, tmp_path: Path, position):
+    out = tmp_path / f"{position}.pdf"
+    page_numbers(make_pdf("a.pdf", 1), out, position=position)
+    with pymupdf.open(out) as doc:
+        rect = doc[0].rect
+        hit = doc[0].search_for("1")[-1]  # the number, not the body text
+    assert rect.contains(hit)
+    assert (hit.y0 < rect.height / 2) is position.startswith("Top")
+    if position.endswith("left"):
+        assert hit.x0 < rect.width / 3
+    elif position.endswith("right"):
+        assert hit.x1 > rect.width * 2 / 3
+
+
+# --- impose -----------------------------------------------------------------
+def test_impose_two_up(make_pdf, tmp_path: Path):
+    out = tmp_path / "2up.pdf"
+    impose(make_pdf("a.pdf", 5), out, cols=2, rows=1, size=PAGE_SIZES["A4"])
+    with pymupdf.open(out) as doc:
+        assert doc.page_count == 3  # 5 pages, 2 to a sheet
+        assert doc[0].rect.width > doc[0].rect.height  # portrait sources turn the sheet landscape
+        assert "a.pdf page 1" in doc[0].get_text() and "a.pdf page 2" in doc[0].get_text()
+        assert doc[2].get_text().count("page") == 1  # the last sheet is half empty
+
+
+def test_impose_resizes_one_page_per_sheet(make_pdf, tmp_path: Path):
+    out = tmp_path / "a5.pdf"
+    impose(make_pdf("a.pdf", 2), out, size=PAGE_SIZES["A5"])
+    with pymupdf.open(out) as doc:
+        assert doc.page_count == 2
+        assert (round(doc[0].rect.width), round(doc[0].rect.height)) == (420, 595)  # A5 portrait, matching the source
+
+
+def test_impose_forces_orientation(make_pdf, tmp_path: Path):
+    out = tmp_path / "land.pdf"
+    impose(make_pdf("a.pdf", 1), out, size=PAGE_SIZES["A4"], orientation="Landscape")
+    with pymupdf.open(out) as doc:
+        assert doc[0].rect.width > doc[0].rect.height and "a.pdf page 1" in doc[0].get_text()
+
+
+def test_impose_refuses_its_own_source(make_pdf):
+    src = make_pdf("a.pdf", 1)
+    with pytest.raises(ValueError, match="one of the input files"):
+        impose(src, src)

@@ -1,5 +1,6 @@
-"""Pull embedded images and plain text out of a PDF."""
+"""Pull embedded images, tables and plain text out of a PDF, and search it."""
 
+import csv
 from pathlib import Path
 
 from pdf_helper.core.pdf import open_pdf
@@ -32,6 +33,37 @@ def extract_text(src: Path) -> list[str]:
     """Plain reading-order text, one string per page."""
     with open_pdf(src) as doc:
         return [page.get_text("text") for page in doc]
+
+
+def extract_tables(src: Path, out_dir: Path) -> list[Path]:
+    """Write every detected table as p<page>-<n>.csv. Empty cells come out blank."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    with open_pdf(src) as doc:
+        for page in doc:
+            for n, table in enumerate(page.find_tables().tables, start=1):
+                rows = table.extract()
+                if not rows:
+                    continue
+                out = out_dir / f"p{page.number + 1:03d}-{n:02d}.csv"
+                # utf-8-sig: Excel reads a plain UTF-8 CSV as Latin-1 and mangles anything accented.
+                with out.open("w", newline="", encoding="utf-8-sig") as fh:
+                    csv.writer(fh).writerows([[cell or "" for cell in row] for row in rows])
+                written.append(out)
+    return written
+
+
+def find_text(src: Path, needle: str, *, case_sensitive: bool = False) -> list[tuple[int, int]]:
+    """Pages containing ``needle`` as (1-based page number, hit count). Matches inside words."""
+    hits: list[tuple[int, int]] = []
+    with open_pdf(src) as doc:
+        for page in doc:
+            rects = page.search_for(needle)  # search_for is case-insensitive
+            if case_sensitive:
+                rects = [r for r in rects if page.get_textbox(r).strip() == needle]
+            if rects:
+                hits.append((page.number + 1, len(rects)))
+    return hits
 
 
 def _rtf_unicode(code: int) -> str:

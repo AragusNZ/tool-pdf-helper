@@ -27,4 +27,7 @@ def run(ctx: FeatureContext, params: tuple[str, Path]) -> None:
     each_file(ctx, one)
 
 
-FEATURE = Feature(label="Watermark", prepare=prepare, run=run, exts=PDF_ONLY, tooltip="Diagonal text on every page")
+FEATURE = Feature(
+    label="Watermark", prepare=prepare, run=run, exts=PDF_ONLY, group="Stamp",
+    tooltip="Diagonal text on every page",
+)

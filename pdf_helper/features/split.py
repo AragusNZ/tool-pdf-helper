@@ -25,4 +25,7 @@ def run(ctx: FeatureContext, params: tuple[int, Path]) -> None:
     each_file(ctx, one)
 
 
-FEATURE = Feature(label="Split", prepare=prepare, run=run, exts=PDF_ONLY, tooltip="Split into files of N pages")
+FEATURE = Feature(
+    label="Split", prepare=prepare, run=run, exts=PDF_ONLY, group="Pages",
+    tooltip="Split into files of N pages",
+)

@@ -1,10 +1,10 @@
-"""Find-and-replace text in a PDF via redaction: each hit is redacted and the new text drawn in its place."""
+"""Remove text from a PDF. Find-and-replace draws new text over each redacted hit; Redact leaves a box."""
 
 from pathlib import Path
 
 import pymupdf
 
-from pdf_helper.core.pdf import open_pdf
+from pdf_helper.core.pdf import _not_source, open_pdf
 
 
 def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bool = False) -> int:
@@ -40,5 +40,38 @@ def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bo
             for rect, size, color, baseline in hits:
                 if new:
                     page.insert_text((rect.x0, baseline), new, fontname="helv", fontsize=size, color=color)
+        doc.save(out)
+    return count
+
+
+def redact(
+    src: Path,
+    out: Path,
+    boxes: dict[int, list[tuple[float, float, float, float]]] | None = None,
+    needle: str = "",
+    *,
+    case_sensitive: bool = False,
+    fill: tuple[float, float, float] = (0, 0, 0),
+) -> int:
+    """Black out ``boxes`` (page points, keyed by 0-based page) and every hit for ``needle``.
+
+    Returns the number of areas removed. The text really goes: it is deleted from the page content,
+    not covered over, and image pixels under a box go with it.
+    """
+    _not_source(out, [src])
+    count = 0
+    with open_pdf(src) as doc:
+        for page in doc:
+            rects = [pymupdf.Rect(*r) for r in (boxes or {}).get(page.number, [])]
+            if needle:
+                for rect in page.search_for(needle):  # search_for is case-insensitive
+                    if case_sensitive and page.get_textbox(rect).strip() != needle:
+                        continue
+                    rects.append(rect)
+            for rect in rects:
+                page.add_redact_annot(rect, fill=fill)
+                count += 1
+            if rects:
+                page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_PIXELS)
         doc.save(out)
     return count

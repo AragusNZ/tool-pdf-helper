@@ -8,15 +8,17 @@ import pytest
 from pdf_helper.core.convert import AUTO, IMAGE_SIZE, MATCH
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
-    FEATURES, add_image, add_text, compress, create_pdf, extract_content, extract_pages, merge, replace_text, rotate,
-    split, to_docx, to_images, watermark,
+    FEATURES, add_image, add_text, compress, create_pdf, delete_pages, extract_content, extract_pages, find_text,
+    grayscale, merge, nup, page_numbers, redact, replace_text, resize, rotate, split, split_bookmarks, tables, to_docx,
+    to_images, watermark,
 )
 from pdf_helper.features.base import FeatureContext
+from pdf_helper.ui import dialogs
 
 
 def test_registry_labels_unique():
     labels = [f.label for f in FEATURES]
-    assert len(labels) == len(set(labels)) == 13
+    assert len(labels) == len(set(labels)) == 22
 
 
 def test_enabled_for_gating(make_pdf, make_png, tmp_path: Path):
@@ -62,7 +64,7 @@ def test_merge_prepare_cancel(make_pdf, log, monkeypatch):
 def test_extract_pages_prepare_retries_bad_spec(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf, out = make_pdf("a.pdf", 5), tmp_path / "e.pdf"
     answers = iter(["99", "2-3"])
-    monkeypatch.setattr(extract_pages, "ask_text", lambda *a: next(answers))
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: next(answers))
     monkeypatch.setattr(extract_pages, "save_pdf_path", lambda parent, suggested: out)
     ctx = FeatureContext([pdf], log)
     params = extract_pages.FEATURE.prepare(ctx)
@@ -73,7 +75,7 @@ def test_extract_pages_prepare_retries_bad_spec(make_pdf, tmp_path: Path, log, m
 
 @pytest.mark.parametrize("spec_answer, save_answer", [(None, "unused"), ("1", None)])
 def test_extract_pages_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, spec_answer, save_answer):
-    monkeypatch.setattr(extract_pages, "ask_text", lambda *a: spec_answer)
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: spec_answer)
     monkeypatch.setattr(extract_pages, "save_pdf_path", lambda *a: save_answer)
     assert extract_pages.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
@@ -116,7 +118,7 @@ def test_rotate_feature_page_spec(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf, out = make_pdf("a.pdf", 3), tmp_path / "r.pdf"
     answers = iter(["bad", "2"])
     monkeypatch.setattr(rotate, "ask_choice", lambda *a: "90")
-    monkeypatch.setattr(rotate, "ask_text", lambda *a: next(answers))
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: next(answers))
     monkeypatch.setattr(rotate, "save_pdf_path", lambda *a: out)
     ctx = FeatureContext([pdf], log)
     params = rotate.FEATURE.prepare(ctx)
@@ -129,7 +131,7 @@ def test_rotate_feature_page_spec(make_pdf, tmp_path: Path, log, monkeypatch):
 def test_rotate_feature_all_pages(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf, out = make_pdf("a.pdf", 2), tmp_path / "r.pdf"
     monkeypatch.setattr(rotate, "ask_choice", lambda *a: "180")
-    monkeypatch.setattr(rotate, "ask_text", lambda *a: "  ")
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: "  ")
     monkeypatch.setattr(rotate, "save_pdf_path", lambda *a: out)
     ctx = FeatureContext([pdf], log)
     params = rotate.FEATURE.prepare(ctx)
@@ -141,7 +143,7 @@ def test_rotate_feature_all_pages(make_pdf, tmp_path: Path, log, monkeypatch):
 @pytest.mark.parametrize("choice, spec, save", [(None, "1", "x"), ("90", None, "x"), ("90", "1", None)])
 def test_rotate_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, choice, spec, save):
     monkeypatch.setattr(rotate, "ask_choice", lambda *a: choice)
-    monkeypatch.setattr(rotate, "ask_text", lambda *a: spec)
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: spec)
     monkeypatch.setattr(rotate, "save_pdf_path", lambda *a: tmp_path / "r.pdf" if save else None)
     assert rotate.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
@@ -318,7 +320,7 @@ def test_extract_pages_prompt_carries_hint(make_pdf, tmp_path: Path, log, monkey
         prompts.append(prompt)
         return next(answers)
 
-    monkeypatch.setattr(extract_pages, "ask_text", ask)
+    monkeypatch.setattr(dialogs, "ask_text", ask)
     monkeypatch.setattr(extract_pages, "save_pdf_path", lambda *a: tmp_path / "e.pdf")
     extract_pages.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 2)], log))
     assert not prompts[0].startswith("Invalid") and prompts[1].startswith("Invalid: 'abc' is not a page number")
@@ -398,3 +400,235 @@ def test_place_prepare_cancel(make_pdf, log, monkeypatch, module, result, accept
     _fake_dialog(monkeypatch, module, accepted, result)
     monkeypatch.setattr(module, "choose_directory", lambda *a: None)
     assert module.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+# --- delete_pages -----------------------------------------------------------
+def test_delete_pages_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    pdf, out = make_pdf("a.pdf", 4), tmp_path / "d.pdf"
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: "2-3")
+    monkeypatch.setattr(delete_pages, "save_pdf_path", lambda parent, suggested: out)
+    ctx = FeatureContext([pdf], log)
+    params = delete_pages.FEATURE.prepare(ctx)
+    assert params == ([0, 3], out)
+    delete_pages.FEATURE.run(ctx, params)
+    with pymupdf.open(out) as doc:
+        assert [p.get_text().strip() for p in doc] == ["a.pdf page 1", "a.pdf page 4"]
+    assert "deleted 2 page(s), 2 left" in log.lines[-1]
+
+
+def test_delete_pages_refuses_to_empty_the_file(make_pdf, log, monkeypatch):
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: "1-2")
+    with pytest.raises(ValueError, match="every page"):
+        delete_pages.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 2)], log))
+
+
+@pytest.mark.parametrize("spec, save", [(None, "x"), ("1", None)])
+def test_delete_pages_prepare_cancel(make_pdf, log, monkeypatch, spec, save):
+    monkeypatch.setattr(dialogs, "ask_text", lambda *a: spec)
+    monkeypatch.setattr(delete_pages, "save_pdf_path", lambda *a: Path("d.pdf") if save else None)
+    assert delete_pages.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 3)], log)) is None
+
+
+# --- split_bookmarks --------------------------------------------------------
+def test_split_bookmarks_prepare_and_run(tmp_path: Path, log, monkeypatch):
+    src = tmp_path / "book.pdf"
+    with pymupdf.open() as doc:
+        for i in range(4):
+            doc.new_page()
+        doc.set_toc([[1, "One", 1], [1, "Two", 3]])
+        doc.save(src)
+    monkeypatch.setattr(split_bookmarks, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([src], log)
+    split_bookmarks.FEATURE.run(ctx, split_bookmarks.FEATURE.prepare(ctx))
+    assert sorted(p.name for p in (tmp_path / "book-chapters").iterdir()) == ["book-01 One.pdf", "book-02 Two.pdf"]
+    assert "2 chapter(s)" in log.lines[-1]
+
+
+def test_split_bookmarks_prepare_cancel(make_pdf, log, monkeypatch):
+    monkeypatch.setattr(split_bookmarks, "choose_directory", lambda *a: None)
+    assert split_bookmarks.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+# --- page_numbers -----------------------------------------------------------
+def test_page_numbers_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    answers = iter(["Page 1 of 10", "Top right"])
+    monkeypatch.setattr(page_numbers, "ask_choice", lambda *a: next(answers))
+    monkeypatch.setattr(page_numbers, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([make_pdf("a.pdf", 2)], log)
+    params = page_numbers.FEATURE.prepare(ctx)
+    assert params == ("Page {n} of {total}", "Top right", tmp_path)
+    page_numbers.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "a-numbered.pdf") as doc:
+        assert "Page 2 of 2" in doc[1].get_text()
+
+
+@pytest.mark.parametrize("answers, folder", [([None], True), (["1", None], True), (["1", "Top left"], False)])
+def test_page_numbers_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answers, folder):
+    replies = iter(answers)
+    monkeypatch.setattr(page_numbers, "ask_choice", lambda *a: next(replies))
+    monkeypatch.setattr(page_numbers, "choose_directory", lambda *a: tmp_path if folder else None)
+    assert page_numbers.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+# --- nup / resize / grayscale -----------------------------------------------
+def test_nup_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    monkeypatch.setattr(nup, "ask_choice", lambda *a: "4 per sheet")
+    monkeypatch.setattr(nup, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([make_pdf("a.pdf", 5)], log)
+    params = nup.FEATURE.prepare(ctx)
+    assert params == (2, 2, tmp_path)
+    nup.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "a-4up.pdf") as doc:
+        assert doc.page_count == 2
+    assert "4 pages per A4 sheet" in log.lines[-1]
+
+
+@pytest.mark.parametrize("choice, folder", [(None, True), ("2 per sheet", False)])
+def test_nup_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, choice, folder):
+    monkeypatch.setattr(nup, "ask_choice", lambda *a: choice)
+    monkeypatch.setattr(nup, "choose_directory", lambda *a: tmp_path if folder else None)
+    assert nup.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+def test_resize_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    answers = iter(["A5", "Landscape"])
+    monkeypatch.setattr(resize, "ask_choice", lambda *a: next(answers))
+    monkeypatch.setattr(resize, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([make_pdf("a.pdf", 1)], log)
+    params = resize.FEATURE.prepare(ctx)
+    assert params == ("A5", "Landscape", tmp_path)
+    resize.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "a-a5.pdf") as doc:
+        assert (round(doc[0].rect.width), round(doc[0].rect.height)) == (595, 420)
+    assert "pages on A5" in log.lines[-1]
+
+
+def test_resize_offers_only_fixed_sizes():
+    assert "A4" in resize.SIZES and AUTO not in resize.SIZES and IMAGE_SIZE not in resize.SIZES
+
+
+@pytest.mark.parametrize("answers, folder", [([None], True), (["A4", None], True), (["A4", "Portrait"], False)])
+def test_resize_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answers, folder):
+    replies = iter(answers)
+    monkeypatch.setattr(resize, "ask_choice", lambda *a: next(replies))
+    monkeypatch.setattr(resize, "choose_directory", lambda *a: tmp_path if folder else None)
+    assert resize.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+def test_grayscale_prepare_and_run(tmp_path: Path, log, monkeypatch):
+    src = tmp_path / "c.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page().draw_rect(pymupdf.Rect(50, 50, 200, 200), color=(1, 0, 0), fill=(1, 0, 0))
+        doc.save(src)
+    monkeypatch.setattr(grayscale, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([src], log)
+    grayscale.FEATURE.run(ctx, grayscale.FEATURE.prepare(ctx))
+    with pymupdf.open(tmp_path / "c-grey.pdf") as doc:
+        red, green, blue = doc[0].get_pixmap().pixel(100, 100)
+    assert red == green == blue and "grey ->" in log.lines[-1]
+
+
+def test_grayscale_prepare_cancel(make_pdf, log, monkeypatch):
+    monkeypatch.setattr(grayscale, "choose_directory", lambda *a: None)
+    assert grayscale.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+# --- tables -----------------------------------------------------------------
+def test_tables_prepare_and_run(tmp_path: Path, log, monkeypatch):
+    src = tmp_path / "t.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        for r, row in enumerate([["Name", "Qty"], ["Bolt", "12"]]):
+            for c, value in enumerate(row):
+                cell = pymupdf.Rect(100 + c * 120, 100 + r * 24, 220 + c * 120, 124 + r * 24)
+                page.draw_rect(cell, color=(0, 0, 0))
+                page.insert_text((cell.x0 + 4, cell.y1 - 8), value, fontsize=11)
+        doc.save(src)
+    monkeypatch.setattr(tables, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([src], log)
+    tables.FEATURE.run(ctx, tables.FEATURE.prepare(ctx))
+    assert (tmp_path / "t-tables" / "p001-01.csv").exists() and "1 table(s)" in log.lines[-1]
+
+
+def test_tables_reports_nothing_found(make_pdf, tmp_path: Path, log, monkeypatch):
+    monkeypatch.setattr(tables, "choose_directory", lambda *a: None)
+    assert tables.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+    tables.FEATURE.run(FeatureContext([make_pdf("a.pdf", 1)], log), tmp_path)
+    assert log.lines[-1] == "a.pdf: no tables found"
+
+
+# --- find_text --------------------------------------------------------------
+def test_find_text_prepare_and_run(make_pdf, log, monkeypatch):
+    pdf = make_pdf("a.pdf", 2)
+    monkeypatch.setattr(find_text, "ask_text", lambda *a: "page")
+    monkeypatch.setattr(find_text, "ask_choice", lambda *a: "Match case")
+    ctx = FeatureContext([pdf], log)
+    params = find_text.FEATURE.prepare(ctx)
+    assert params == ("page", True)
+    find_text.FEATURE.run(ctx, params)
+    assert log.lines[-1] == "a.pdf: 2 hit(s) on 2 page(s) - p1, p2"
+
+
+def test_find_text_reports_a_miss(make_pdf, log):
+    find_text.FEATURE.run(FeatureContext([make_pdf("a.pdf", 1)], log), ("sprocket", False))
+    assert log.lines[-1] == "a.pdf: not found"
+
+
+def test_find_text_counts_repeats(tmp_path: Path, log):
+    src = tmp_path / "r.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page().insert_text((72, 72), "bolt bolt")
+        doc.save(src)
+    find_text.FEATURE.run(FeatureContext([src], log), ("bolt", False))
+    assert log.lines[-1] == "r.pdf: 2 hit(s) on 1 page(s) - p1 x2"
+
+
+@pytest.mark.parametrize("needle, case", [(None, "x"), ("", "x"), ("a", None)])
+def test_find_text_prepare_cancel(make_pdf, log, monkeypatch, needle, case):
+    monkeypatch.setattr(find_text, "ask_text", lambda *a: needle)
+    monkeypatch.setattr(find_text, "ask_choice", lambda *a: case)
+    assert find_text.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+# --- redact -----------------------------------------------------------------
+class _FakeRedactDialog:
+    accept = True
+    result: tuple = ()
+
+    def __init__(self, parent, src: Path):
+        self.src = src
+
+    def exec(self) -> bool:
+        return type(self).accept
+
+    def params(self) -> tuple:
+        return type(self).result
+
+
+def _fake_redact_dialog(monkeypatch, accept: bool, result: tuple = ({}, "", False)):
+    monkeypatch.setattr(redact, "RedactDialog", type("_R", (_FakeRedactDialog,), {"accept": accept, "result": result}))
+
+
+def test_redact_prepare_and_run(tmp_path: Path, log, monkeypatch):
+    src = tmp_path / "s.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        page.insert_text((72, 72), "secret code")
+        page.insert_text((72, 200), "keep this")
+        doc.save(src)
+    _fake_redact_dialog(monkeypatch, True, ({0: [(60, 60, 200, 80)]}, "", False))
+    monkeypatch.setattr(redact, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([src], log)
+    params = redact.FEATURE.prepare(ctx)
+    assert params == ({0: [(60, 60, 200, 80)]}, "", False, tmp_path)
+    redact.FEATURE.run(ctx, params)
+    with pymupdf.open(tmp_path / "s-redacted.pdf") as doc:
+        assert doc[0].get_text().split() == ["keep", "this"]
+    assert "1 area(s) removed" in log.lines[-1]
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_redact_prepare_cancel(make_pdf, log, monkeypatch, accepted):
+    _fake_redact_dialog(monkeypatch, accepted)
+    monkeypatch.setattr(redact, "choose_directory", lambda *a: None)
+    assert redact.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None

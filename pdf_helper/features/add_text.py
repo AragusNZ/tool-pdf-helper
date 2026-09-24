@@ -32,6 +32,6 @@ def run(ctx: FeatureContext, params: tuple) -> None:
 
 
 FEATURE = Feature(
-    label="Add text", prepare=prepare, run=run, exts=PDF_ONLY,
+    label="Add text", prepare=prepare, run=run, exts=PDF_ONLY, group="Stamp",
     tooltip="Click a spot on the page, choose font, size and colour",
 )

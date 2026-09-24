@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtGui import QShortcut
+from PySide6.QtWidgets import QPushButton
 
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
@@ -144,3 +145,25 @@ def test_add_files_remembers_the_folder(qapp, monkeypatch, make_pdf):
     finally:
         app_module.settings().remove("last_dir")
 
+
+
+def test_actions_are_split_into_tabs(qapp):
+    w = MainWindow()
+    groups: dict[str, list[str]] = {}
+    for feature in FEATURES:
+        groups.setdefault(feature.group, []).append(feature.label)
+    assert [w.tabs.tabText(i) for i in range(w.tabs.count())] == list(groups)
+    # every registry entry still has exactly one button, and it sits on its own tab
+    assert [f.label for f, _ in w.feature_buttons] == [label for labels in groups.values() for label in labels]
+    for i, labels in enumerate(groups.values()):
+        assert [b.text() for b in w.tabs.widget(i).findChildren(QPushButton)] == labels
+
+
+def test_a_group_named_twice_lands_on_one_tab(qapp):
+    """Registry order decides tab order; a stray out-of-order entry must not open a second tab."""
+    runner = Feature(label="X", run=lambda ctx, params: None, group="Pages")
+    other = Feature(label="Y", run=lambda ctx, params: None, group="Convert")
+    third = Feature(label="Z", run=lambda ctx, params: None, group="Pages")
+    w = _window(qapp, [runner, other, third])
+    assert [w.tabs.tabText(i) for i in range(w.tabs.count())] == ["Pages", "Convert"]
+    assert [b.text() for b in w.tabs.widget(0).findChildren(QPushButton)] == ["X", "Z"]

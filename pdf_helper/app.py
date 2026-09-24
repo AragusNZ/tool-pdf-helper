@@ -13,7 +13,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
-    QPushButton, QStyleFactory, QVBoxLayout, QWidget,
+    QPushButton, QStyleFactory, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from pdf_helper import __version__
@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)  # Fluent: 16epx surface to edge, 12 between cards
         layout.setSpacing(12)
         layout.addWidget(self._files_group(), stretch=3)
-        layout.addWidget(self._actions_group())
+        layout.addWidget(self._actions_tabs())
         layout.addWidget(self._log_group(), stretch=2)
         root = QWidget()
         root.setLayout(layout)
@@ -89,21 +89,28 @@ class MainWindow(QMainWindow):
         group.setLayout(inner)
         return group
 
-    def _actions_group(self) -> QGroupBox:
+    def _actions_tabs(self) -> QTabWidget:
+        """One tab per feature group, in the order the registry first names it."""
         self.feature_buttons: list[tuple[Feature, QPushButton]] = []
-        grid = QGridLayout()
-        grid.setSpacing(8)
-        for i, feature in enumerate(FEATURES):
-            b = QPushButton(feature.label)
-            b.setToolTip(feature.tooltip)
-            b.clicked.connect(partial(self._run_feature, feature))
-            grid.addWidget(b, i // GRID_COLUMNS, i % GRID_COLUMNS)
-            self.feature_buttons.append((feature, b))
-        for column in range(GRID_COLUMNS):
-            grid.setColumnStretch(column, 1)  # equal-width buttons whatever the label length
-        group = QGroupBox("Actions")
-        group.setLayout(grid)
-        return group
+        groups: dict[str, list[Feature]] = {}
+        for feature in FEATURES:
+            groups.setdefault(feature.group, []).append(feature)
+        self.tabs = QTabWidget()
+        for name, features in groups.items():
+            grid = QGridLayout()
+            grid.setSpacing(8)
+            for i, feature in enumerate(features):
+                b = QPushButton(feature.label)
+                b.setToolTip(feature.tooltip)
+                b.clicked.connect(partial(self._run_feature, feature))
+                grid.addWidget(b, i // GRID_COLUMNS, i % GRID_COLUMNS)
+                self.feature_buttons.append((feature, b))
+            for column in range(GRID_COLUMNS):
+                grid.setColumnStretch(column, 1)  # equal-width buttons whatever the label length
+            page = QWidget()
+            page.setLayout(grid)
+            self.tabs.addTab(page, name)
+        return self.tabs
 
     def _log_group(self) -> QGroupBox:
         inner = QVBoxLayout()

@@ -23,10 +23,10 @@ exe; `README.md` is the user-facing half of this file.
 
 ```
 pdf_helper/
-  app.py          the window, the button grid, logging setup — wires the rest together
+  app.py          the window, the Actions tabs, logging setup — wires the rest together
   core/           pure PDF/file utilities, no Qt import anywhere
   features/       one file per button, plus base.py holding the Feature contract
-  ui/             Qt widgets: file queue, dialogs, page-preview placement, theme, worker thread
+  ui/             Qt widgets: file queue, dialogs, page preview, placement and redaction, theme, worker
   assets/         icon.ico and the SVGs it is generated from
 tools/make_icon.py  regenerates assets/icon.ico from the SVGs
 tests/            pytest, one file per core module or feature group
@@ -41,9 +41,13 @@ and never bump it — a bump is the operator's `dt patch`.
 1. Create `pdf_helper/features/<name>.py` exposing
    `FEATURE = Feature(label=..., prepare=..., run=...)`. `prepare` runs on the UI thread and may
    open dialogs; `run` runs on a worker thread and **must not touch Qt**. `min_files`, `max_files`
-   and `exts` gate when the button is enabled.
-2. Append it to `FEATURES` in `pdf_helper/features/__init__.py` — that list is the button order.
+   and `exts` gate when the button is enabled; `group` is the Actions tab it lands on.
+2. Append it to `FEATURES` in `pdf_helper/features/__init__.py` — that list is the button order, and
+   the first appearance of each `group` is the tab order. Keep a group's features together.
 3. Reusable PDF logic goes in `pdf_helper/core/`, with a test under `tests/`.
+
+`ask_page_spec` in `ui/dialogs.py` is the "1-3,5" prompt: it re-asks until the spec parses, and
+returns `[]` for a blank one when `allow_blank` is set.
 
 `each_file` in `features/base.py` is the batch helper: a failure on one file is logged and the rest
 of the queue still runs. Outputs never overwrite anything: `core/pdf.py` refuses a source file as a target,

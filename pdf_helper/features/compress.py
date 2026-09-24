@@ -30,4 +30,7 @@ def run(ctx: FeatureContext, params: tuple[int, int, Path]) -> None:
     each_file(ctx, one)
 
 
-FEATURE = Feature(label="Compress", prepare=prepare, run=run, exts=PDF_ONLY, tooltip="Reduce file size")
+FEATURE = Feature(
+    label="Compress", prepare=prepare, run=run, exts=PDF_ONLY, group="Output",
+    tooltip="Reduce file size",
+)

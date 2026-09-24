@@ -10,7 +10,9 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM
 from pdf_helper.ui import dialogs, theme
-from pdf_helper.ui.place_dialog import PlaceDialog, _Preview
+from pdf_helper.ui.place_dialog import PlaceDialog
+from pdf_helper.ui.preview import PagePreview
+from pdf_helper.ui.redact_dialog import DragPreview, RedactDialog
 from pdf_helper.ui.file_queue import FileQueue
 from pdf_helper.ui.worker import Worker
 
@@ -287,10 +289,10 @@ class _ClickEvent:
 
 def test_preview_click_maps_pixels_to_points(qapp, make_pdf):
     seen: list[tuple[float, float]] = []
-    preview = _Preview()
+    preview = PagePreview()
     preview.clicked.connect(lambda x, y: seen.append((x, y)))
     preview.mousePressEvent(_ClickEvent(5, 5))  # no page loaded: must not dereference the event
-    preview.draw_box((1, 1, 2, 2))  # nor paint
+    preview.draw_boxes([(1, 1, 2, 2)])  # nor paint
     assert seen == []
 
     png, width, _ = render_page_png(make_pdf("a.pdf", 1), 0, max_px=200)
@@ -303,3 +305,86 @@ def test_preview_click_maps_pixels_to_points(qapp, make_pdf):
     preview.mousePressEvent(_ClickEvent(preview.base.width() + 10, 5))
     preview.mousePressEvent(_ClickEvent(5, preview.base.height() + 10))
     assert len(seen) == 1
+
+
+# --- DragPreview / RedactDialog --------------------------------------------
+def _loaded_preview(make_pdf):
+    preview = DragPreview()
+    png, width, _ = render_page_png(make_pdf("a.pdf", 1), 0, max_px=200)
+    preview.show_page(png, width)
+    return preview, preview.base.width() / width
+
+
+def test_clamped_point_pulls_a_drag_back_onto_the_page(qapp, make_pdf):
+    preview = PagePreview()
+    assert preview.clamped_point(QPointF(5, 5)) is None  # no page loaded
+    png, width, height = render_page_png(make_pdf("a.pdf", 1), 0, max_px=200)
+    preview.show_page(png, width)
+    x, y = preview.clamped_point(QPointF(-20, preview.base.height() + 50))
+    # the pixmap is a whole number of pixels, so the bottom edge lands within a pixel of the page
+    assert x == 0 and height - y < width / preview.base.width() + 1
+
+
+def test_drag_preview_emits_the_rectangle(qapp, make_pdf):
+    preview, scale = _loaded_preview(make_pdf)
+    seen: list[tuple] = []
+    preview.dragged.connect(lambda *box: seen.append(box))
+    # dragged bottom-right to top-left: the rectangle comes back the right way round
+    preview.mousePressEvent(_ClickEvent(120 * scale, 140 * scale))
+    preview.mouseMoveEvent(_ClickEvent(60 * scale, 40 * scale))
+    preview.mouseReleaseEvent(_ClickEvent(60 * scale, 40 * scale))
+    assert len(seen) == 1 and all(abs(a - b) < 0.5 for a, b in zip(seen[0], (60, 40, 120, 140)))
+
+
+def test_drag_preview_ignores_a_click(qapp, make_pdf):
+    preview, scale = _loaded_preview(make_pdf)
+    seen: list[tuple] = []
+    preview.dragged.connect(lambda *box: seen.append(box))
+    preview.mousePressEvent(_ClickEvent(50 * scale, 50 * scale))
+    preview.mouseReleaseEvent(_ClickEvent(51 * scale, 51 * scale))  # under MIN_SIDE: a click, not a box
+    preview.mouseMoveEvent(_ClickEvent(80 * scale, 80 * scale))  # no drag in progress
+    assert seen == []
+
+
+def test_drag_preview_ignores_a_press_past_the_page(qapp, make_pdf):
+    preview, scale = _loaded_preview(make_pdf)
+    seen: list[tuple] = []
+    preview.dragged.connect(lambda *box: seen.append(box))
+    preview.mousePressEvent(_ClickEvent(preview.base.width() + 10, 5))
+    preview.mouseReleaseEvent(_ClickEvent(50 * scale, 50 * scale))
+    assert seen == []
+
+
+def test_redact_dialog_collects_boxes_per_page(qapp, make_pdf):
+    dialog = RedactDialog(None, make_pdf("a.pdf", 3))
+    ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert not ok.isEnabled()
+
+    dialog.preview.dragged.emit(10, 10, 100, 100)
+    dialog.preview.dragged.emit(20, 20, 60, 60)
+    assert ok.isEnabled() and dialog.count.text() == "2 on this page, 2 in all"
+
+    dialog.page_box.setValue(3)
+    assert dialog.count.text() == "0 on this page, 2 in all"
+    dialog.preview.dragged.emit(30, 30, 90, 90)
+    boxes, needle, case_sensitive = dialog.params()
+    assert sorted(boxes) == [0, 2] and len(boxes[0]) == 2 and needle == "" and case_sensitive is False
+
+
+def test_redact_dialog_undo_and_clear(qapp, make_pdf):
+    dialog = RedactDialog(None, make_pdf("a.pdf", 1))
+    dialog._undo()  # nothing to undo yet
+    dialog.preview.dragged.emit(10, 10, 100, 100)
+    dialog.preview.dragged.emit(20, 20, 60, 60)
+    dialog._undo()
+    assert dialog.params()[0] == {0: [(10, 10, 100, 100)]}
+    dialog._clear_page()
+    assert dialog.params()[0] == {} and not dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+def test_redact_dialog_text_alone_is_enough(qapp, make_pdf):
+    dialog = RedactDialog(None, make_pdf("a.pdf", 1))
+    dialog.find.setText("secret")
+    dialog.match_case.setChecked(True)
+    assert dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
+    assert dialog.params() == ({}, "secret", True)

@@ -81,3 +81,40 @@ def image_size(image: Path) -> tuple[int, int]:
     """Pixel width and height of a raster image, for keeping its aspect ratio."""
     pix = pymupdf.Pixmap(str(image))
     return pix.width, pix.height
+
+
+# Where a page number sits, and the formats offered for it.
+NUMBER_POSITIONS = ("Bottom centre", "Bottom right", "Bottom left", "Top centre", "Top right", "Top left")
+NUMBER_FORMATS = {"1": "{n}", "1 of 10": "{n} of {total}", "Page 1": "Page {n}", "Page 1 of 10": "Page {n} of {total}"}
+
+
+def page_numbers(
+    src: Path,
+    out: Path,
+    *,
+    fmt: str = "{n}",
+    position: str = "Bottom centre",
+    size: float = 10,
+    fontname: str = "helv",
+    margin: float = 15 * MM,
+) -> None:
+    """Stamp a number on every page. ``fmt`` takes ``{n}`` and ``{total}``; numbering starts at 1.
+
+    ``position`` is one of ``NUMBER_POSITIONS``. Coordinates are in the page's displayed space, so a
+    rotated page gets its number the right way up.
+    """
+    # ponytail: always starts at 1. Add a first-number box if anyone needs a skipped cover page.
+    with open_pdf(src) as doc:
+        for page in doc:
+            text = fmt.format(n=page.number + 1, total=doc.page_count)
+            width = pymupdf.get_text_length(text, fontname=fontname, fontsize=size)
+            rect = page.rect
+            if position.endswith("left"):
+                x = margin
+            elif position.endswith("right"):
+                x = rect.width - margin - width
+            else:
+                x = (rect.width - width) / 2
+            y = margin + size if position.startswith("Top") else rect.height - margin
+            page.insert_text((x, y), text, fontname=fontname, fontsize=size)
+        doc.save(out)

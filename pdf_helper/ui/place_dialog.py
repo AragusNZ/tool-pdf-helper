@@ -3,8 +3,7 @@
 from pathlib import Path
 
 import pymupdf
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
@@ -15,46 +14,7 @@ from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM, fonts, image_size
-
-OUTLINE = QColor("#c0272d")
-
-
-class _Preview(QLabel):
-    """Page image that reports clicks in page points."""
-
-    clicked = Signal(float, float)
-
-    def __init__(self):
-        super().__init__(alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.base: QPixmap | None = None
-        self._scale = 1.0
-
-    def show_page(self, png: bytes, page_width: float) -> None:
-        pixmap = QPixmap()
-        pixmap.loadFromData(png, "PNG")
-        self.base = pixmap
-        self._scale = pixmap.width() / page_width
-        self.setPixmap(pixmap)
-
-    def draw_box(self, rect: tuple[float, float, float, float] | None) -> None:
-        """Redraw the page with ``rect`` (page points) outlined, or plain when None."""
-        if self.base is None:
-            return
-        pixmap = self.base.copy()
-        if rect is not None:
-            painter = QPainter(pixmap)
-            painter.setPen(QPen(OUTLINE, 2))
-            s = self._scale
-            painter.drawRect(round(rect[0] * s), round(rect[1] * s), round((rect[2] - rect[0]) * s), round((rect[3] - rect[1]) * s))
-            painter.end()
-        self.setPixmap(pixmap)
-
-    def mousePressEvent(self, event) -> None:
-        # A click past the page image (the dialog is resizable) is not a point on the page.
-        if self.base is not None:
-            point = event.position()
-            if self.base.rect().contains(point.toPoint()):
-                self.clicked.emit(point.x() / self._scale, point.y() / self._scale)
+from pdf_helper.ui.preview import PagePreview
 
 
 class PlaceDialog(QDialog):
@@ -74,7 +34,7 @@ class PlaceDialog(QDialog):
         self._aspect = 1.0  # image height / width
         self.setWindowTitle("Add text" if mode == "text" else "Add image")
 
-        self.preview = _Preview()
+        self.preview = PagePreview()
         self.preview.clicked.connect(self._on_click)
         self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1)
         self.page_box.valueChanged.connect(self._render)
@@ -160,7 +120,8 @@ class PlaceDialog(QDialog):
         self._changed()
 
     def _changed(self) -> None:
-        self.preview.draw_box(self.box())
+        box = self.box()
+        self.preview.draw_boxes([box] if box else [])
         self._update_ok()
 
     def _pick_colour(self) -> None:

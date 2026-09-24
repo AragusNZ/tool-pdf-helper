@@ -2,26 +2,16 @@
 
 from pathlib import Path
 
-from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count, select_pages
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext
-from pdf_helper.ui.dialogs import ask_text, save_pdf_path
+from pdf_helper.ui.dialogs import ask_page_spec, save_pdf_path
 
 
 def prepare(ctx: FeatureContext) -> tuple[list[int], Path] | None:
     src = ctx.files[0]
-    total = page_count(src)
-    hint = ""
-    while True:
-        spec = ask_text(ctx.parent, "Extract pages", f"{hint}Pages to extract (1-{total}), e.g. 1-3,5,8-:")
-        if spec is None:
-            return None
-        try:
-            pages = parse_page_spec(spec, total)
-            break
-        except ValueError as exc:
-            ctx.log(f"invalid page spec: {exc}")
-            hint = f"Invalid: {exc}\n"
+    pages = ask_page_spec(ctx.parent, "Extract pages", page_count(src), ctx.log)
+    if pages is None:
+        return None
     out = save_pdf_path(ctx.parent, src.with_name(f"{src.stem}-pages.pdf"))
     return (pages, out) if out else None
 
@@ -39,5 +29,6 @@ FEATURE = Feature(
     min_files=1,
     max_files=1,
     exts=PDF_ONLY,
-    tooltip="Queue exactly one PDF, then choose the pages to keep",
+    group="Pages",
+    tooltip="Queue exactly one PDF, then choose the pages to keep. Spec order is kept, so 3,1,2 reorders",
 )

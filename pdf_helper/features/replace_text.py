@@ -35,4 +35,7 @@ def run(ctx: FeatureContext, params: Params) -> None:
     each_file(ctx, one)
 
 
-FEATURE = Feature(label="Replace text", prepare=prepare, run=run, exts=PDF_ONLY, tooltip="Find and replace text on every page")
+FEATURE = Feature(
+    label="Replace text", prepare=prepare, run=run, exts=PDF_ONLY, group="Text",
+    tooltip="Find and replace text on every page",
+)

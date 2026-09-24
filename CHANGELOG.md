@@ -28,6 +28,14 @@ All notable changes to this project are documented here, in
 
 ### Added
 
+- Nine buttons, all on PyMuPDF features the tool already shipped the library for: **Delete pages**, **Split by
+  bookmarks**, **Page numbers**, **N-up**, **Resize pages**, **Grayscale**, **Tables to CSV**, **Find text** and
+  **Redact**. No new dependency.
+- Redact takes boxes dragged over the page preview as well as a phrase, and removes both from the file rather than
+  covering them: the text goes out of the page content and image pixels under a box go with it.
+- The Actions area is now five tabs - Convert, Pages, Stamp, Text, Output - because 22 buttons in one grid was a wall.
+  A feature declares its tab with the new `group` field on `Feature`.
+
 - Create PDF(s) and Merge ask what page images go on: Auto (A4 turned to match the picture), Image size (a page the
   size of the image, as before), or A4, A3, A5, Letter, Legal, HD 1920x1080 or 4K 3840x2160 with a portrait,
   landscape or match-the-image orientation. A multi-page TIFF gets one page per frame.

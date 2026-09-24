@@ -5,7 +5,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from pdf_helper.core.extract import extract_images, extract_text, write_rtf
+from pdf_helper.core.extract import extract_images, extract_tables, extract_text, find_text, write_rtf
 from pdf_helper.core.office import find_libreoffice
 
 
@@ -51,3 +51,38 @@ def test_rtf_roundtrip_libreoffice(tmp_path: Path):
                    check=True, capture_output=True, timeout=120)
     text = (tmp_path / "r.txt").read_text(encoding="utf-8", errors="replace")
     assert "hello é" in text and "second" in text
+
+
+def _table_pdf(tmp_path: Path, rows: list[list[str]]) -> Path:
+    """A ruled grid, which is what find_tables looks for."""
+    out = tmp_path / "table.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        for r, row in enumerate(rows):
+            for c, value in enumerate(row):
+                cell = pymupdf.Rect(100 + c * 120, 100 + r * 24, 220 + c * 120, 124 + r * 24)
+                page.draw_rect(cell, color=(0, 0, 0))
+                if value:
+                    page.insert_text((cell.x0 + 4, cell.y1 - 8), value, fontsize=11)
+        page.insert_text((100, 400), "Bolt and bolt again")
+        doc.save(out)
+    return out
+
+
+def test_extract_tables(tmp_path: Path):
+    src = _table_pdf(tmp_path, [["Name", "Qty"], ["Bolt", "12"], ["Nut", ""]])
+    written = extract_tables(src, tmp_path / "csv")
+    assert [p.name for p in written] == ["p001-01.csv"]
+    # utf-8-sig so Excel opens it without mangling accents; an empty cell comes out blank
+    assert written[0].read_text(encoding="utf-8-sig").splitlines() == ["Name,Qty", "Bolt,12", "Nut,"]
+
+
+def test_extract_tables_finds_none(make_pdf, tmp_path: Path):
+    assert extract_tables(make_pdf("plain.pdf", 1), tmp_path / "csv") == []
+
+
+def test_find_text(tmp_path: Path):
+    src = _table_pdf(tmp_path, [["Bolt", "12"]])
+    assert find_text(src, "Bolt") == [(1, 3)]  # the cell plus "Bolt and bolt"
+    assert find_text(src, "Bolt", case_sensitive=True) == [(1, 2)]
+    assert find_text(src, "sprocket") == []
