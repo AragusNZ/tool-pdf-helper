@@ -192,6 +192,54 @@ def npm_release(call):
 
 # --- coding-core ------------------------------------------------------------
 
+# A numbered release heading. `## [Unreleased]` is deliberately NOT matched -- writing
+# bullets under it is ordinary work, and it is the only changelog edit an agent makes.
+RELEASE_HEADING = re.compile(r"^##\s*\[?v?\d+\.\d+\.\d+", re.M)
+# A semver `version` field in a manifest. Everything else in the file stays editable.
+VERSION_FIELD = re.compile(r'"version"\s*:\s*"v?\d+\.\d+\.\d+')
+
+
+def version_write(call):
+    """The file-write half of release-boundary. The shell half blocks the release COMMANDS;
+    this blocks writing their OUTPUT by hand, which achieves the same thing and did.
+
+    Scoped to files that ALREADY EXIST, which is what keeps `scaffold` working -- a new
+    package legitimately writes `VERSION` 0.1.0 and a fresh composer.json. The harm is
+    bumping, not creating. CHANGELOG.md needs no such check: a fresh changelog carries only
+    `## [Unreleased]`, so the heading pattern cannot fire on one.
+
+    Why a guard and not the rule alone: `promote_changelog_unreleased` in dev-tools returns
+    SUCCESS and changes nothing when `## [<ver>]` is already present, so an invented heading
+    makes the operator's next real bump skip promotion SILENTLY and strand the notes.
+    """
+    if call.kind != "write":
+        return None
+    name = call.path.rsplit("/", 1)[-1]
+
+    if name == "CHANGELOG.md":
+        if not RELEASE_HEADING.search(call.content):
+            return None
+    elif name == "VERSION":
+        if not os.path.exists(os.path.join(call.cwd, call.path)):
+            return None
+    elif name in ("composer.json", "package.json"):
+        if not VERSION_FIELD.search(call.content):
+            return None
+        if not os.path.exists(os.path.join(call.cwd, call.path)):
+            return None
+    else:
+        return None
+
+    return Deny(
+        "Blocked: version numbers are operator-only. `dt patch|minor|major` derives "
+        "the next number from VERSION and writes the heading, the date, VERSION and the manifest's "
+        "`version` field itself. A number written by hand names a release that does not "
+        "exist, and the operator's next real bump then skips promotion silently. Add "
+        "bullets under `## [Unreleased]` and stop; say which command the user should run.",
+        rule="release-boundary-version-write",
+    )
+
+
 # --- laravel-core -----------------------------------------------------------
 
 def bare_runners(call):
@@ -702,6 +750,7 @@ GUARD_SETS = {
     # (release-boundary) lives in this layer too.
     "coding-core": [
         git_tag_release,
+        version_write,
     ],
     "laravel-core": [
         bare_runners,
