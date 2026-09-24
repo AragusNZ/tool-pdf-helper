@@ -2,7 +2,8 @@
 
 Small Windows desktop tool for everyday PDF jobs. Drop files into the queue, press a button.
 
-No account, no upload, no internet: every file is processed on your own machine.
+No account, no upload: every file is processed on your own machine. The only thing it asks the internet is
+whether a newer version is out, and nothing about your files goes with it.
 
 ## Install
 
@@ -14,6 +15,9 @@ Download the latest **`PdfHelper-<version>-setup.exe`** from
 - Windows will warn about the publisher. That is expected, and [what to do](#windows-security-warnings) is below.
 - `PdfHelper-<version>.zip` is the same program as a plain folder, for a machine where installers are blocked.
   Unzip it anywhere and run `PdfHelper.exe`.
+- To update: on start it checks GitHub for a newer release and offers to open the download page.
+  **Help > Check for Updates** asks any time; untick **Help > Check on Startup** to stop the automatic check.
+  Run the new `setup.exe` over the top — it upgrades in place and keeps your settings.
 - To remove it: **Settings > Apps > Installed apps > PDF Helper > Uninstall**.
 
 Verify a download against `SHA256SUMS.txt` from the same release:

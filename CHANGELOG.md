@@ -5,6 +5,12 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Added
+
+- Update check: on start, PDF Helper asks GitHub for the latest release and, if it is newer, offers to open
+  the download page. **Help > Check for Updates** runs it on demand; **Help > Check on Startup** turns the
+  automatic check off. Nothing is downloaded or installed by the app itself.
+
 ## [1.1.0] - 2026-09-24
 
 ### Added

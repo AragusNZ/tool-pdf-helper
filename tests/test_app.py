@@ -167,3 +167,91 @@ def test_a_group_named_twice_lands_on_one_tab(qapp):
     w = _window(qapp, [runner, other, third])
     assert [w.tabs.tabText(i) for i in range(w.tabs.count())] == ["Pages", "Convert"]
     assert [b.text() for b in w.tabs.widget(0).findChildren(QPushButton)] == ["X", "Z"]
+
+
+def _check(w: MainWindow, qapp, manual: bool) -> None:
+    w._check_updates(manual=manual)
+    worker = w._update_worker
+    assert worker is not None and worker.wait(10000)
+    qapp.processEvents()
+
+
+def _stub_update(monkeypatch, latest):
+    """Stub the network and every dialog; return what the window asked for."""
+    seen: dict = {"opened": [], "info": []}
+
+    def fetch():
+        if isinstance(latest, Exception):
+            raise latest
+        return latest
+
+    monkeypatch.setattr(app_module, "latest_version", fetch)
+    monkeypatch.setattr(app_module.QMessageBox, "question", lambda *a: app_module.QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(app_module.QMessageBox, "information", lambda *a: seen["info"].append(a[-1]))
+    monkeypatch.setattr(app_module.QDesktopServices, "openUrl", lambda url: seen["opened"].append(url.toString()))
+    return seen
+
+
+def test_newer_release_opens_the_download_page(qapp, monkeypatch):
+    seen = _stub_update(monkeypatch, "999.0.0")
+    w = MainWindow()
+    _check(w, qapp, manual=False)
+    assert seen["opened"] == [app_module.RELEASES_URL] and w._update_worker is None
+
+
+def test_up_to_date_speaks_only_when_asked(qapp, monkeypatch):
+    seen = _stub_update(monkeypatch, app_module.__version__)
+    w = MainWindow()
+    _check(w, qapp, manual=False)
+    assert seen["info"] == []
+    _check(w, qapp, manual=True)
+    assert len(seen["info"]) == 1 and "up to date" in seen["info"][0] and seen["opened"] == []
+
+
+def test_update_failure_logged_only_when_asked(qapp, monkeypatch):
+    _stub_update(monkeypatch, OSError("offline"))
+    w = MainWindow()
+    _check(w, qapp, manual=False)
+    assert "update check failed" not in w.log_view.toPlainText()
+    _check(w, qapp, manual=True)
+    assert "ERROR: update check failed: offline" in w.log_view.toPlainText()
+
+
+def test_startup_check_toggle_is_remembered(qapp):
+    app_module.settings().remove("check_updates")
+    try:
+        w = MainWindow()
+        assert w.startup_check.isChecked()  # on by default
+        w.startup_check.setChecked(False)
+        assert not app_module.check_on_startup() and not MainWindow().startup_check.isChecked()
+    finally:
+        app_module.settings().remove("check_updates")
+
+
+def test_close_waits_for_a_running_update_check(qapp, monkeypatch):
+    import threading
+    import time
+
+    from PySide6.QtGui import QCloseEvent
+
+    release = threading.Event()
+    calls: list[int] = []
+
+    def slow():
+        calls.append(1)
+        release.wait(5)
+        return app_module.__version__
+
+    _stub_update(monkeypatch, None)
+    monkeypatch.setattr(app_module, "latest_version", slow)
+    w = MainWindow()
+    w._check_updates(manual=False)
+    worker = w._update_worker
+    w._check_updates(manual=True)  # second click while one is in flight is ignored
+    assert w._update_worker is worker
+    threading.Timer(0.2, release.set).start()
+    started = time.monotonic()
+    ev = QCloseEvent()
+    w.closeEvent(ev)
+    assert ev.isAccepted() and worker.isFinished() and time.monotonic() - started >= 0.1 and calls == [1]
+    qapp.processEvents()

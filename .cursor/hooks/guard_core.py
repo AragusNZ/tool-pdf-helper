@@ -134,8 +134,13 @@ _GH_RELEASE = re.compile(r"\bgh\s+release\s+(create|edit|delete|upload)\b")
 # `git commit|version|rename` plus the `patch|minor|major` shorthands for `git version` -- but the
 # name stays matched so a future alias cannot open a hole. `:laravel` / `:frontend` stack suffixes
 # are accepted because `dt workspace:laravel git version` is the same command.
+#
+# `rewire` is that same pipeline with a headless session inserted before ci, so it commits, tags
+# and pushes every package in the workspace and belongs here. Its read-only `--plan` is swept up
+# with it deliberately: a carve-out would have to be right about where the flag sits in the line,
+# and being wrong about that reopens the whole release surface to save the operator one command.
 WORKSPACE_RELEASE_RE = (
-    r"\bdt\s+workspace(?::\w+)?\s+((git\s+)?(version|release)|patch|minor|major)\b"
+    r"\bdt\s+workspace(?::\w+)?\s+((git\s+)?(version|release)|patch|minor|major|rewire)\b"
 )
 TOOLKIT_RELEASE_RE = (
     r"\bdt\s+(git\s+(version|release|github-release)|patch|minor|major)\b"

@@ -6,10 +6,10 @@ from functools import partial
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, Slot
+from PySide6.QtCore import Qt, QSettings, QTimer, QUrl, Slot
 from PySide6.QtGui import (
-    QAction, QActionGroup, QCloseEvent, QFont, QFontDatabase, QGuiApplication, QIcon, QKeySequence, QPalette,
-    QShortcut,
+    QAction, QActionGroup, QCloseEvent, QDesktopServices, QFont, QFontDatabase, QGuiApplication, QIcon, QKeySequence,
+    QPalette, QShortcut,
 )
 from PySide6.QtWidgets import (
     QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from pdf_helper import __version__
 from pdf_helper.core.convert import supported_extensions
+from pdf_helper.core.update import RELEASES_URL, is_newer, latest_version
 from pdf_helper.features import FEATURES
 from pdf_helper.features.base import Feature, FeatureContext
 from pdf_helper.ui.dialogs import open_file_paths
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
         self.resize(760, 620)
         self.setMinimumSize(640, 480)
         self._worker: Worker | None = None
+        self._update_worker: Worker | None = None
 
         self.queue = FileQueue()
         self.queue.changed.connect(self._refresh_buttons)
@@ -129,6 +131,11 @@ class MainWindow(QMainWindow):
             group.addAction(action)
             theme_menu.addAction(action)
         help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction(QAction("Check for &Updates...", self, triggered=lambda: self._check_updates(manual=True)))
+        self.startup_check = QAction("Check on &Startup", self, checkable=True, checked=check_on_startup())
+        self.startup_check.toggled.connect(lambda on: settings().setValue("check_updates", on))
+        help_menu.addAction(self.startup_check)
+        help_menu.addSeparator()
         help_menu.addAction(QAction("&About", self, triggered=self._about))
 
     def _set_theme(self, name: str) -> None:
@@ -137,6 +144,34 @@ class MainWindow(QMainWindow):
 
     def _about(self) -> None:
         QMessageBox.about(self, "PDF Helper", f"PDF Helper {__version__}\n\nLog file: {LOG_FILE}")
+
+    # --- updates -----------------------------------------------------------
+    def _check_updates(self, manual: bool) -> None:
+        """Ask GitHub off the UI thread; a startup check (manual=False) stays silent unless there is news."""
+        if self._update_worker is not None:
+            return
+        result: dict = {}
+        self._update_worker = Worker(lambda: result.update(latest=latest_version()), parent=self)
+        if manual:
+            self._update_worker.failed.connect(lambda m: self.log(f"ERROR: update check failed: {m}"))
+        self._update_worker.finished.connect(lambda: self._on_update_checked(result.get("latest"), manual))
+        self._update_worker.start()
+
+    def _on_update_checked(self, latest: str | None, manual: bool) -> None:
+        if self._update_worker is not None:
+            self._update_worker.deleteLater()
+        self._update_worker = None
+        if latest is None:
+            return  # failed: already logged if manual
+        if is_newer(latest, __version__):
+            answer = QMessageBox.question(
+                self, "PDF Helper",
+                f"PDF Helper {latest} is available (you have {__version__}).\n\nOpen the download page?",
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl(RELEASES_URL))
+        elif manual:
+            QMessageBox.information(self, "PDF Helper", f"PDF Helper {__version__} is up to date.")
 
     # --- queue -------------------------------------------------------------
     def _add_files(self) -> None:
@@ -203,6 +238,8 @@ class MainWindow(QMainWindow):
             self.log("still working - wait for 'done' before closing")
             event.ignore()
         else:
+            if self._update_worker is not None:
+                self._update_worker.wait()  # bounded by the request timeout
             super().closeEvent(event)
 
     # --- logging -----------------------------------------------------------
@@ -213,6 +250,10 @@ class MainWindow(QMainWindow):
             self.log_view.appendHtml(f'<span style="color:{red};">{escape(message)}</span>')
         else:
             self.log_view.appendPlainText(message)
+
+
+def check_on_startup() -> bool:
+    return settings().value("check_updates", True, type=bool)
 
 
 def _follow_system_scheme(_scheme) -> None:
@@ -242,4 +283,6 @@ def main() -> None:
     QGuiApplication.styleHints().colorSchemeChanged.connect(_follow_system_scheme)
     window = MainWindow()
     window.show()
+    if check_on_startup():
+        QTimer.singleShot(1500, lambda: window._check_updates(manual=False))  # after the window has painted
     sys.exit(app.exec())
