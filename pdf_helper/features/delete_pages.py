@@ -24,6 +24,7 @@ def run(ctx: FeatureContext, params: tuple[list[int], Path]) -> None:
     keep, out = params
     src = ctx.files[0]
     select_pages(src, keep, out)
+    ctx.outputs.append(out)
     ctx.log(f"deleted {page_count(src) - len(keep)} page(s), {len(keep)} left -> {out}")
 
 

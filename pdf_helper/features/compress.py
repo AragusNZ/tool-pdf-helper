@@ -21,11 +21,12 @@ def prepare(ctx: FeatureContext) -> tuple[int, int, Path] | None:
 def run(ctx: FeatureContext, params: tuple[int, int, Path]) -> None:
     dpi, quality, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-small.pdf")
         compress(src, out, dpi=dpi, quality=quality)
         before, after = src.stat().st_size, out.stat().st_size
         ctx.log(f"{src.name}: {before / 1e6:.2f} MB -> {after / 1e6:.2f} MB ({out})")
+        return out
 
     each_file(ctx, one)
 

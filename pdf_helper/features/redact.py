@@ -20,10 +20,11 @@ def prepare(ctx: FeatureContext) -> tuple | None:
 def run(ctx: FeatureContext, params: tuple) -> None:
     boxes, needle, case_sensitive, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-redacted.pdf")
         n = redact(src, out, boxes, needle, case_sensitive=case_sensitive)
         ctx.log(f"{src.name}: {n} area(s) removed -> {out}")
+        return out
 
     each_file(ctx, one)
 

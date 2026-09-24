@@ -22,10 +22,11 @@ def prepare(ctx: FeatureContext) -> tuple[str, str, Path] | None:
 def run(ctx: FeatureContext, params: tuple[str, str, Path]) -> None:
     fmt, position, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-numbered.pdf")
         page_numbers(src, out, fmt=fmt, position=position)
         ctx.log(f"{src.name}: numbered -> {out}")
+        return out
 
     each_file(ctx, one)
 

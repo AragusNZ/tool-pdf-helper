@@ -13,10 +13,11 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 
 def run(ctx: FeatureContext, base: Path) -> None:
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out_dir = fresh(base / f"{src.stem}-chapters")
         parts = split_by_toc(src, out_dir)
         ctx.log(f"{src.name}: {len(parts)} chapter(s) -> {out_dir}")
+        return out_dir
 
     each_file(ctx, one)
 

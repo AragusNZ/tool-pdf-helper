@@ -13,10 +13,11 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 
 def run(ctx: FeatureContext, base: Path) -> None:
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path | None:
         out_dir = fresh(base / f"{src.stem}-tables")
         written = extract_tables(src, out_dir)
         ctx.log(f"{src.name}: {len(written)} table(s) -> {out_dir}" if written else f"{src.name}: no tables found")
+        return out_dir if written else None
 
     each_file(ctx, one)
 

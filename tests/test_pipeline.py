@@ -118,9 +118,17 @@ def test_excepthook_logs_and_shows_dialog(monkeypatch, qapp, caplog):
     assert shown and "boom" in shown[0][2] and "unhandled exception" in caplog.text
 
 
-def test_main_builds_and_shows_the_window(monkeypatch, qapp):
-    """The exe entry point: everything main() touches must exist (icon, style, theme, window)."""
+def test_main_builds_and_shows_the_window(monkeypatch, qapp, make_pdf):
+    """The exe entry point: everything main() touches must exist (icon, style, theme, window).
+
+    Files named on the command line (Send To, "Open with") land in the queue.
+    """
     shown = []
+    pdf = make_pdf("a.pdf", 1)
+    monkeypatch.setattr(app_module.QApplication, "arguments", staticmethod(lambda: ["exe", str(pdf), "missing.pdf"]))
+    timers: list[int] = []  # recorded, never armed: a live timer would hit the network in a later test
+    monkeypatch.setattr(app_module, "check_on_startup", lambda: True)
+    monkeypatch.setattr(app_module.QTimer, "singleShot", staticmethod(lambda ms, fn: timers.append(ms)))
     logging_setup: dict = {}
     monkeypatch.setattr(app_module.logging, "basicConfig", lambda **kw: logging_setup.update(kw))
     monkeypatch.setattr(app_module.QApplication, "__new__", lambda cls, argv: qapp)
@@ -130,6 +138,8 @@ def test_main_builds_and_shows_the_window(monkeypatch, qapp):
     with pytest.raises(SystemExit) as exc:
         app_module.main()
     assert exc.value.code == 0 and len(shown) == 1
+    assert timers == [1500]  # the startup update check is scheduled
+    assert shown[0].queue.paths() == [pdf] and "skipped missing.pdf" in shown[0].log_view.toPlainText()
     handler = logging_setup["handlers"][0]  # the log file cannot grow forever
     assert isinstance(handler, logging.handlers.RotatingFileHandler) and handler.maxBytes == 1_000_000
 

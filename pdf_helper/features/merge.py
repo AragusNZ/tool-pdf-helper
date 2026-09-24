@@ -28,6 +28,7 @@ def run(ctx: FeatureContext, params: tuple[Path, str, str]) -> None:
             work.mkdir()
             pdfs.append(to_pdf(src, work, log=ctx.log, page_size=page_size, orientation=orientation))
         merge(pdfs, out)
+    ctx.outputs.append(out)
     ctx.log(f"merged {len(pdfs)} files -> {out}")
 
 

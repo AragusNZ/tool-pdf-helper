@@ -9,16 +9,16 @@ from pdf_helper.core.convert import AUTO, IMAGE_SIZE, MATCH
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
     FEATURES, add_image, add_text, compress, create_pdf, delete_pages, extract_content, extract_pages, find_text,
-    grayscale, merge, nup, page_numbers, redact, replace_text, resize, rotate, split, split_bookmarks, tables, to_docx,
-    to_images, watermark,
+    grayscale, merge, metadata, nup, page_numbers, protect, redact, replace_text, resize, rotate, split, split_bookmarks,
+    tables, to_docx, to_images, unlock, watermark,
 )
-from pdf_helper.features.base import FeatureContext
+from pdf_helper.features.base import FeatureContext, each_file
 from pdf_helper.ui import dialogs
 
 
 def test_registry_labels_unique():
     labels = [f.label for f in FEATURES]
-    assert len(labels) == len(set(labels)) == 22
+    assert len(labels) == len(set(labels)) == 25
 
 
 def test_enabled_for_gating(make_pdf, make_png, tmp_path: Path):
@@ -643,3 +643,92 @@ def test_find_text_cuts_a_long_page_list_short(tmp_path: Path, log):
     find_text.FEATURE.run(FeatureContext([src], log), ("bolt", False))
     assert log.lines[-1].endswith(f"p{find_text.SHOWN}, and 3 more")
     assert f"{find_text.SHOWN + 3} hit(s) on {find_text.SHOWN + 3} page(s)" in log.lines[-1]
+
+
+def test_each_file_reports_progress_and_collects_outputs(tmp_path: Path, log):
+    files = [tmp_path / n for n in ("a", "b", "c")]
+    progress: list[tuple[int, int]] = []
+    ctx = FeatureContext(files=files, log=log, progress=lambda d, t: progress.append((d, t)))
+    returns = {"a": tmp_path / "a.out", "b": None, "c": [tmp_path / "c1", tmp_path / "c2"]}
+    each_file(ctx, lambda src: returns[src.name])
+    assert progress == [(1, 3), (2, 3), (3, 3)]
+    assert ctx.outputs == [tmp_path / "a.out", tmp_path / "c1", tmp_path / "c2"]
+
+
+def test_each_file_stops_when_cancelled(tmp_path: Path, log):
+    files = [tmp_path / n for n in ("a", "b", "c")]
+    done: list[str] = []
+    ctx = FeatureContext(files=files, log=log, cancelled=lambda: len(done) >= 1)
+    each_file(ctx, lambda src: done.append(src.name))
+    assert done == ["a"] and "cancelled: 1 of 3 file(s) done" in log.lines
+
+
+# --- passwords and info -------------------------------------------------------
+def test_protect_then_unlock_features(make_pdf, tmp_path: Path, log, monkeypatch):
+    src = make_pdf("a.pdf", 2)
+    monkeypatch.setattr(protect, "ask_password", lambda *a, **k: "s3cret")
+    monkeypatch.setattr(protect, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext(files=[src], log=log)
+    protect.FEATURE.run(ctx, protect.FEATURE.prepare(ctx))
+    locked = tmp_path / "a-protected.pdf"
+    assert ctx.outputs == [locked] and pymupdf.open(locked).needs_pass
+    assert not any("s3cret" in line for line in log.lines)
+
+    monkeypatch.setattr(unlock, "ask_password", lambda *a, **k: "s3cret")
+    monkeypatch.setattr(unlock, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext(files=[locked], log=log)
+    unlock.FEATURE.run(ctx, unlock.FEATURE.prepare(ctx))
+    assert page_count(tmp_path / "a-protected-unlocked.pdf") == 2
+
+
+def test_unlock_wrong_password_is_logged_per_file(make_pdf, tmp_path: Path, log):
+    locked = tmp_path / "l.pdf"
+    with pymupdf.open(make_pdf("a.pdf", 1)) as doc:
+        doc.save(locked, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="right", owner_pw="right")
+    ctx = FeatureContext(files=[locked], log=log)
+    with pytest.raises(RuntimeError, match="1 of 1"):
+        unlock.FEATURE.run(ctx, ("wrong", tmp_path))
+    assert any("wrong password for l.pdf" in line for line in log.lines)
+
+
+@pytest.mark.parametrize("module", [protect, unlock])
+def test_password_prepare_cancel(module, make_pdf, log, monkeypatch):
+    ctx = FeatureContext(files=[make_pdf("a.pdf", 1)], log=log)
+    monkeypatch.setattr(module, "ask_password", lambda *a, **k: None)
+    assert module.FEATURE.prepare(ctx) is None
+    monkeypatch.setattr(module, "ask_password", lambda *a, **k: "pw")
+    monkeypatch.setattr(module, "choose_directory", lambda *a: None)
+    assert module.FEATURE.prepare(ctx) is None
+
+
+def test_edit_info_single_file_prefills_and_sets(make_pdf, tmp_path: Path, log, monkeypatch):
+    src = tmp_path / "m.pdf"
+    with pymupdf.open(make_pdf("a.pdf", 1)) as doc:
+        doc.set_metadata({"title": "Old", "author": "Ann"})
+        doc.save(src)
+    shown: dict = {}
+
+    def fields(parent, title, values):
+        shown.update(values)
+        return {**values, "Title": "New", "Author": ""}  # blank author: leave as is
+
+    monkeypatch.setattr(metadata, "ask_fields", fields)
+    monkeypatch.setattr(metadata, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext(files=[src], log=log)
+    metadata.FEATURE.run(ctx, metadata.FEATURE.prepare(ctx))
+    assert shown["Title"] == "Old" and shown["Author"] == "Ann"
+    meta = pymupdf.open(tmp_path / "m-info.pdf").metadata
+    assert meta["title"] == "New" and meta["author"] == "Ann"
+
+
+def test_edit_info_batch_starts_blank_and_cancels(make_pdf, log, monkeypatch):
+    ctx = FeatureContext(files=[make_pdf("a.pdf", 1), make_pdf("b.pdf", 1)], log=log)
+    shown: dict = {}
+    monkeypatch.setattr(metadata, "ask_fields", lambda p, t, values: shown.update(values) or dict(values))
+    assert metadata.FEATURE.prepare(ctx) is None  # nothing entered
+    assert set(shown.values()) == {""} and "Edit info: nothing entered" in log.lines
+    monkeypatch.setattr(metadata, "ask_fields", lambda *a: None)
+    assert metadata.FEATURE.prepare(ctx) is None
+    monkeypatch.setattr(metadata, "ask_fields", lambda p, t, values: {**values, "Author": "Bo"})
+    monkeypatch.setattr(metadata, "choose_directory", lambda *a: None)
+    assert metadata.FEATURE.prepare(ctx) is None

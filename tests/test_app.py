@@ -2,13 +2,14 @@
 
 from pathlib import Path
 
+import pytest
 from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QPushButton
 
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
 from pdf_helper.features import FEATURES
-from pdf_helper.features.base import Feature, FeatureContext
+from pdf_helper.features.base import Feature, FeatureContext, each_file
 
 
 def _wait(window: MainWindow, qapp) -> None:
@@ -255,3 +256,78 @@ def test_close_waits_for_a_running_update_check(qapp, monkeypatch):
     w.closeEvent(ev)
     assert ev.isAccepted() and worker.isFinished() and time.monotonic() - started >= 0.1 and calls == [1]
     qapp.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _forget_geometry():
+    """An accepted close saves the window geometry; keep test runs out of the real settings."""
+    yield
+    app_module.settings().remove("geometry")
+
+
+def test_cancel_stops_between_files(qapp, tmp_path: Path):
+    import threading
+
+    gate, started = threading.Event(), threading.Event()
+    seen: list[str] = []
+
+    def one(src: Path) -> Path:
+        seen.append(src.name)
+        started.set()
+        gate.wait(5)  # hold the first file until the cancel is in
+        return src
+
+    feat = Feature(label="T", run=lambda ctx, p: each_file(ctx, one), exts=None)
+    files = []
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text("x")
+        files.append(tmp_path / name)
+    w = _window(qapp, [feat])
+    w.queue.add_paths(files)
+    w._run_feature(feat)
+    assert not w.cancel_button.isHidden()  # in the status bar while busy
+    assert started.wait(5)
+    w.cancel_button.click()
+    assert not w.cancel_button.isEnabled() and w._worker.isInterruptionRequested()
+    gate.set()
+    _wait(w, qapp)
+    assert w.cancel_button.isHidden()
+    text = w.log_view.toPlainText()
+    assert seen == ["a.txt"] and "cancelled: 1 of 3 file(s) done" in text
+    assert w.progress.maximum() == 3 and w.progress.value() == 1 and w.progress.text() == "1 of 3"
+
+
+def test_open_output_folder_after_a_job(qapp, monkeypatch, make_pdf, tmp_path: Path):
+    opened: list[str] = []
+    monkeypatch.setattr(app_module.QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()))
+    out = tmp_path / "out" / "x.pdf"
+    out.parent.mkdir()
+    out.write_bytes(b"")
+    feat = Feature(label="T", run=lambda ctx, p: ctx.outputs.append(out))
+    w = _window(qapp, [feat])
+    assert not w.open_output.isEnabled()
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(feat)
+    _wait(w, qapp)
+    assert w.open_output.isEnabled()
+    w.open_output.click()
+    assert [Path(o) for o in opened] == [out.parent]
+
+
+def test_output_folder_can_be_the_output_itself(qapp, make_pdf, tmp_path: Path):
+    feat = Feature(label="T", run=lambda ctx, p: ctx.outputs.append(tmp_path))
+    w = _window(qapp, [feat])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(feat)
+    _wait(w, qapp)
+    assert w._output_dir == tmp_path
+
+
+def test_window_geometry_survives_a_restart(qapp):
+    from PySide6.QtGui import QCloseEvent
+
+    w = MainWindow()
+    w.setGeometry(40, 50, 700, 520)  # inside the offscreen screen, which clamps anything larger
+    w.closeEvent(QCloseEvent())
+    assert app_module.settings().value("geometry")
+    assert MainWindow().size() == w.size()

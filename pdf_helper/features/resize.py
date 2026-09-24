@@ -26,10 +26,11 @@ def prepare(ctx: FeatureContext) -> tuple[str, str, Path] | None:
 def run(ctx: FeatureContext, params: tuple[str, str, Path]) -> None:
     size, orientation, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-{size.split()[0].lower()}.pdf")
         impose(src, out, size=SIZES[size], orientation=orientation)
         ctx.log(f"{src.name}: pages on {size} -> {out}")
+        return out
 
     each_file(ctx, one)
 

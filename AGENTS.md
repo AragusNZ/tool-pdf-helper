@@ -60,7 +60,9 @@ and never bump it — a bump is the operator's `dt patch`.
 returns `[]` for a blank one when `allow_blank` is set.
 
 `each_file` in `features/base.py` is the batch helper: a failure on one file is logged and the rest
-of the queue still runs. Outputs never overwrite anything: `core/pdf.py` refuses a source file as a target,
+of the queue still runs. It also drives the progress bar and Cancel (between files). `fn` returns the
+file or folder it wrote, which feeds **Open output folder**; a feature that skips `each_file`
+appends to `ctx.outputs` itself. Outputs never overwrite anything: `core/pdf.py` refuses a source file as a target,
 and every generated name goes through `fresh` in `core/paths.py`, which appends ` (2)` when it is taken.
 
 ## Conventions that bite

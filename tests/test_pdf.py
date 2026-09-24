@@ -33,7 +33,7 @@ def test_open_pdf_rejects_password_protected(make_pdf, tmp_path: Path):
     locked = tmp_path / "locked.pdf"
     with pymupdf.open(src) as doc:
         doc.save(locked, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="x", owner_pw="x")
-    with pytest.raises(ValueError, match="locked.pdf is password-protected"):
+    with pytest.raises(ValueError, match="locked.pdf is password-protected - use Unlock first"):
         open_pdf(locked)
     with pytest.raises(ValueError, match="password-protected"):
         page_count(locked)

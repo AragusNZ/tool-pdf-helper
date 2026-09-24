@@ -13,7 +13,7 @@ def open_pdf(src: Path) -> pymupdf.Document:
     doc = pymupdf.open(src)
     if doc.needs_pass:
         doc.close()
-        raise ValueError(f"{src.name} is password-protected")
+        raise ValueError(f"{src.name} is password-protected - use Unlock first")
     return doc
 
 
@@ -90,6 +90,40 @@ def grayscale(src: Path, out: Path) -> None:
     _not_source(out, [src])
     with open_pdf(src) as doc:
         doc.recolor(1)
+        doc.save(out)
+
+
+def protect(src: Path, out: Path, password: str) -> None:
+    """Write a copy that needs ``password`` to open (AES-256)."""
+    _not_source(out, [src])
+    with open_pdf(src) as doc:
+        doc.save(out, encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw=password, user_pw=password)
+
+
+def unlock(src: Path, out: Path, password: str) -> None:
+    """Write an unencrypted copy of a password-protected PDF. The password must be right.
+
+    Files that open without a password but carry owner-only restrictions are not handled.
+    """
+    _not_source(out, [src])
+    with pymupdf.open(src) as doc:
+        if not doc.needs_pass:
+            raise ValueError(f"{src.name} is not password-protected")
+        if not doc.authenticate(password):
+            raise ValueError(f"wrong password for {src.name}")
+        doc.save(out, encryption=pymupdf.PDF_ENCRYPT_NONE)
+
+
+def metadata(src: Path) -> dict[str, str]:
+    with open_pdf(src) as doc:
+        return {k: v for k, v in doc.metadata.items() if isinstance(v, str)}
+
+
+def set_metadata(src: Path, out: Path, fields: dict[str, str]) -> None:
+    """Copy with ``fields`` (title, author, ...) changed. PyMuPDF blanks any key it is not given."""
+    _not_source(out, [src])
+    with open_pdf(src) as doc:
+        doc.set_metadata({**doc.metadata, **fields})
         doc.save(out)
 
 

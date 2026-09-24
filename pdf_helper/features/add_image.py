@@ -22,11 +22,12 @@ def prepare(ctx: FeatureContext) -> tuple | None:
 def run(ctx: FeatureContext, params: tuple) -> None:
     image, rect, spec, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         pages = parse_page_spec(spec, page_count(src)) if spec else None
         out = fresh(out_dir / f"{src.stem}-image.pdf")
         add_image(src, out, image, rect, pages)
         ctx.log(f"{src.name}: {image.name} on {'all' if pages is None else len(pages)} page(s) -> {out}")
+        return out
 
     each_file(ctx, one)
 

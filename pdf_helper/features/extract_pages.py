@@ -19,6 +19,7 @@ def prepare(ctx: FeatureContext) -> tuple[list[int], Path] | None:
 def run(ctx: FeatureContext, params: tuple[list[int], Path]) -> None:
     pages, out = params
     select_pages(ctx.files[0], pages, out)
+    ctx.outputs.append(out)
     ctx.log(f"extracted {len(pages)} page(s) -> {out}")
 
 

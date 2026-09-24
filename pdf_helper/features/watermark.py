@@ -19,10 +19,11 @@ def prepare(ctx: FeatureContext) -> tuple[str, Path] | None:
 def run(ctx: FeatureContext, params: tuple[str, Path]) -> None:
     text, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-stamped.pdf")
         watermark(src, text, out)
         ctx.log(f"{src.name}: stamped -> {out}")
+        return out
 
     each_file(ctx, one)
 

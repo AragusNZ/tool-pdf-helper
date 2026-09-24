@@ -18,9 +18,10 @@ def prepare(ctx: FeatureContext) -> tuple[int, Path] | None:
 def run(ctx: FeatureContext, params: tuple[int, Path]) -> None:
     every, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         parts = split(src, every, out_dir)
         ctx.log(f"{src.name}: {len(parts)} file(s) -> {out_dir}")
+        return out_dir
 
     each_file(ctx, one)
 

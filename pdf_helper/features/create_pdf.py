@@ -27,11 +27,13 @@ def prepare(ctx: FeatureContext) -> tuple[str, str] | None:
 def run(ctx: FeatureContext, params: tuple[str, str]) -> None:
     page_size, orientation = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path | None:
         if src.suffix.lower() == ".pdf":
             ctx.log(f"skip {src.name} (already PDF)")
-            return
-        ctx.log(f"created {to_pdf(src, src.parent, log=ctx.log, page_size=page_size, orientation=orientation)}")
+            return None
+        out = to_pdf(src, src.parent, log=ctx.log, page_size=page_size, orientation=orientation)
+        ctx.log(f"created {out}")
+        return out
 
     each_file(ctx, one)
 

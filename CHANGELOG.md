@@ -10,6 +10,14 @@ All notable changes to this project are documented here, in
 - Update check: on start, PDF Helper asks GitHub for the latest release and, if it is newer, offers to open
   the download page. **Help > Check for Updates** runs it on demand; **Help > Check on Startup** turns the
   automatic check off. Nothing is downloaded or installed by the app itself.
+- **Cancel** in the status bar stops a running batch after the current file, and the progress bar now counts
+  files done ("3 of 10") instead of just spinning.
+- **Open output folder**, under the log, opens the folder the last job wrote to.
+- Files named on the command line are queued at start, and the installer adds **Send to > PDF Helper** to
+  Explorer's right-click menu.
+- The window reopens at the size and position it was closed at.
+- **Password protect**, **Unlock** and **Edit info** (title, author, subject, keywords) on the Output tab. A
+  password-protected input to any other button now says to use Unlock first.
 
 ## [1.1.0] - 2026-09-24
 

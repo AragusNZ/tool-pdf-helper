@@ -13,12 +13,13 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 
 def run(ctx: FeatureContext, base: Path) -> None:
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out_dir = fresh(base / f"{src.stem}-content")
         images = extract_images(src, out_dir / "images")
         rtf = out_dir / f"{src.stem}.rtf"
         write_rtf(extract_text(src), rtf)
         ctx.log(f"{src.name}: {len(images)} image(s), text -> {rtf}")
+        return out_dir
 
     each_file(ctx, one)
 

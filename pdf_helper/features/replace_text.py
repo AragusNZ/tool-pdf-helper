@@ -27,10 +27,11 @@ def prepare(ctx: FeatureContext) -> Params | None:
 def run(ctx: FeatureContext, params: Params) -> None:
     old, new, case_sensitive, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-replaced.pdf")
         n = replace_text(src, old, new, out, case_sensitive=case_sensitive)
         ctx.log(f"{src.name}: {n} replacement(s) -> {out}")
+        return out
 
     each_file(ctx, one)
 

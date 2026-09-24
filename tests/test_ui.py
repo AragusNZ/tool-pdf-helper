@@ -396,3 +396,36 @@ def test_redact_dialog_text_alone_is_enough(qapp, make_pdf):
     dialog.match_case.setChecked(True)
     assert dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
     assert dialog.params() == ({}, "secret", True)  # trimmed
+
+
+def test_ask_password_rejects_blank_and_mismatch(qapp, monkeypatch):
+    answers = iter([("", True), ("a", True), ("b", True), ("a", True), ("a", True)])
+    prompts: list[str] = []
+
+    def get_text(parent, title, prompt, echo):
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(get_text))
+    assert dialogs.ask_password(None, "t", confirm=True) == "a"
+    assert "blank" in prompts[1] and "did not match" in prompts[3]
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(lambda *a: ("x", True)))
+    assert dialogs.ask_password(None, "t", confirm=False) == "x"
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(lambda *a: ("", False)))
+    assert dialogs.ask_password(None, "t", confirm=True) is None
+    answers = iter([("a", True), ("", False)])
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(lambda *a: next(answers)))
+    assert dialogs.ask_password(None, "t", confirm=True) is None  # cancelled on the second ask
+
+
+def test_ask_fields(qapp, monkeypatch):
+    from PySide6.QtWidgets import QLineEdit
+
+    def accept(self):
+        self.findChildren(QLineEdit)[1].setText("Bo")
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", accept)
+    assert dialogs.ask_fields(None, "t", {"Title": "T", "Author": ""}) == {"Title": "T", "Author": "Bo"}
+    monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    assert dialogs.ask_fields(None, "t", {"Title": "T"}) is None

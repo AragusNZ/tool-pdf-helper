@@ -29,6 +29,8 @@ Source: "..\dist\PdfHelper\*"; DestDir: "{app}"; Flags: recursesubdirs ignorever
 [Icons]
 Name: "{group}\PDF Helper"; Filename: "{app}\PdfHelper.exe"
 Name: "{userdesktop}\PDF Helper"; Filename: "{app}\PdfHelper.exe"; Tasks: desktopicon
+; Explorer > right-click > Send to > PDF Helper queues the selected files. Per-user; the uninstaller removes it.
+Name: "{usersendto}\PDF Helper"; Filename: "{app}\PdfHelper.exe"
 
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"

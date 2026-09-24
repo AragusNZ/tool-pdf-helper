@@ -24,10 +24,11 @@ def prepare(ctx: FeatureContext) -> tuple[int, int, Path] | None:
 def run(ctx: FeatureContext, params: tuple[int, int, Path]) -> None:
     cols, rows, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-{cols * rows}up.pdf")
         impose(src, out, cols=cols, rows=rows, size=SHEET)
         ctx.log(f"{src.name}: {cols * rows} pages per A4 sheet -> {out}")
+        return out
 
     each_file(ctx, one)
 

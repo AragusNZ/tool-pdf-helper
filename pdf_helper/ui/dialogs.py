@@ -1,7 +1,9 @@
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QWidget
+from PySide6.QtWidgets import (
+    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
+)
 
 from pdf_helper.core.pages import parse_page_spec
 
@@ -57,3 +59,41 @@ def ask_page_spec(
         except ValueError as exc:
             log(f"invalid page spec: {exc}")
             hint = f"Invalid: {exc}\n"
+
+
+def ask_password(parent: QWidget | None, title: str, *, confirm: bool) -> str | None:
+    """Ask for a non-blank password, twice when ``confirm``. None when cancelled."""
+    hint = ""
+    while True:
+        first, ok = QInputDialog.getText(parent, title, f"{hint}Password:", QLineEdit.EchoMode.Password)
+        if not ok:
+            return None
+        if not first:
+            hint = "The password cannot be blank.\n"
+            continue
+        if not confirm:
+            return first
+        again, ok = QInputDialog.getText(parent, title, "Type it again:", QLineEdit.EchoMode.Password)
+        if not ok:
+            return None
+        if again == first:
+            return first
+        hint = "The two did not match.\n"
+
+
+def ask_fields(parent: QWidget | None, title: str, fields: dict[str, str]) -> dict[str, str] | None:
+    """One line edit per field, prefilled. Returns the edited values, or None when cancelled."""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    form = QFormLayout(dialog)
+    edits = {}
+    for label, value in fields.items():
+        edits[label] = QLineEdit(value)
+        form.addRow(f"{label}:", edits[label])
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    form.addRow(buttons)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return {label: edit.text() for label, edit in edits.items()}

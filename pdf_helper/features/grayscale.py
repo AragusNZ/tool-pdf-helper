@@ -13,10 +13,11 @@ def prepare(ctx: FeatureContext) -> Path | None:
 
 
 def run(ctx: FeatureContext, out_dir: Path) -> None:
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         out = fresh(out_dir / f"{src.stem}-grey.pdf")
         grayscale(src, out)
         ctx.log(f"{src.name}: grey -> {out}")
+        return out
 
     each_file(ctx, one)
 

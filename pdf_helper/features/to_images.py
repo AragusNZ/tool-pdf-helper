@@ -18,9 +18,10 @@ def prepare(ctx: FeatureContext) -> tuple[int, Path] | None:
 def run(ctx: FeatureContext, params: tuple[int, Path]) -> None:
     dpi, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         files = render_pages(src, out_dir, dpi=dpi)
         ctx.log(f"{src.name}: {len(files)} PNG(s) -> {out_dir}")
+        return out_dir
 
     each_file(ctx, one)
 

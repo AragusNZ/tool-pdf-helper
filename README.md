@@ -18,6 +18,7 @@ Download the latest **`PdfHelper-<version>-setup.exe`** from
 - To update: on start it checks GitHub for a newer release and offers to open the download page.
   **Help > Check for Updates** asks any time; untick **Help > Check on Startup** to stop the automatic check.
   Run the new `setup.exe` over the top — it upgrades in place and keeps your settings.
+- Right-click files in Explorer and choose **Send to > PDF Helper** to open them straight into the queue.
 - To remove it: **Settings > Apps > Installed apps > PDF Helper > Uninstall**.
 
 Verify a download against `SHA256SUMS.txt` from the same release:
@@ -30,6 +31,9 @@ Get-FileHash .\PdfHelper-<version>-setup.exe -Algorithm SHA256
 
 Add files with **Add files...** or by dropping them on the file list, then press a button. Every button acts on the
 whole queue. The buttons sit on five tabs.
+
+While a job runs, the bar at the bottom counts files done and **Cancel** stops it after the current file. When it
+finishes, **Open output folder** under the log opens where the files went.
 
 ### Convert
 
@@ -81,6 +85,11 @@ whole queue. The buttons sit on five tabs.
 - **N-up** – 2, 4 or 9 pages on each A4 sheet, the sheet turned to suit. Writes `<name>-4up.pdf`.
 - **Resize pages** – scale every page onto A4, A3, A5, Letter, Legal, HD or 4K, portrait, landscape or turned to match
   the source. Writes `<name>-a4.pdf`.
+- **Password protect** – a copy that asks for a password to open (AES-256). You type it twice. Writes
+  `<name>-protected.pdf`.
+- **Unlock** – a copy without the password. You need to know the password. Writes `<name>-unlocked.pdf`.
+- **Edit info** – title, author, subject and keywords. With one file the boxes show what it has now; a blank box is
+  left as it is. Writes `<name>-info.pdf`.
 
 ## Good to know
 

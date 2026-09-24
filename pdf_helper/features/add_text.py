@@ -22,11 +22,12 @@ def prepare(ctx: FeatureContext) -> tuple | None:
 def run(ctx: FeatureContext, params: tuple) -> None:
     text, pos, spec, fontname, size, color, out_dir = params
 
-    def one(src: Path) -> None:
+    def one(src: Path) -> Path:
         pages = parse_page_spec(spec, page_count(src)) if spec else None
         out = fresh(out_dir / f"{src.stem}-text.pdf")
         add_text(src, out, text, pos, pages, fontname=fontname, size=size, color=color)
         ctx.log(f"{src.name}: text on {'all' if pages is None else len(pages)} page(s) -> {out}")
+        return out
 
     each_file(ctx, one)
 

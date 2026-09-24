@@ -41,7 +41,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"PDF Helper {__version__}")
         self.resize(760, 620)
         self.setMinimumSize(640, 480)
+        if geometry := settings().value("geometry"):
+            self.restoreGeometry(geometry)
         self._worker: Worker | None = None
+        self._output_dir: Path | None = None
         self._update_worker: Worker | None = None
 
         self.queue = FileQueue()
@@ -64,6 +67,10 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 0)  # indeterminate: features report no percentage
         self.progress.hide()
         self.statusBar().addPermanentWidget(self.progress)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self._cancel)
+        self.cancel_button.hide()
+        self.statusBar().addPermanentWidget(self.cancel_button)
         self._refresh_buttons()
 
     # --- construction ------------------------------------------------------
@@ -115,8 +122,14 @@ class MainWindow(QMainWindow):
         return self.tabs
 
     def _log_group(self) -> QGroupBox:
+        self.open_output = QPushButton("Open output folder", enabled=False)
+        self.open_output.clicked.connect(self._open_output)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        buttons.addWidget(self.open_output)
         inner = QVBoxLayout()
         inner.addWidget(self.log_view)
+        inner.addLayout(buttons)
         group = QGroupBox("Log")
         group.setLayout(inner)
         return group
@@ -209,12 +222,20 @@ class MainWindow(QMainWindow):
         # Worker thread must not touch widgets: log via a queued signal, drop the parent widget.
         self._worker = Worker(lambda: feature.run(ctx, params), parent=self)
         ctx.log = self._worker.message.emit
+        ctx.progress = self._worker.progress.emit
+        ctx.cancelled = self._worker.isInterruptionRequested
         ctx.parent = None
+        self._ctx = ctx
         self._worker.message.connect(self.log)
+        self._worker.progress.connect(self._on_progress)
         self._worker.failed.connect(self._on_failed)
         self._worker.finished.connect(self._on_finished)
         self._refresh_buttons()
+        self.progress.setRange(0, 0)  # busy until the first file reports
+        self.progress.setTextVisible(False)
         self.progress.show()
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.show()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self._worker.start()
 
@@ -226,20 +247,44 @@ class MainWindow(QMainWindow):
     def _on_finished(self) -> None:
         QApplication.restoreOverrideCursor()
         self.progress.hide()
+        self.cancel_button.hide()
         self.log("done")
+        if self._ctx.outputs:
+            # ponytail: first output's folder only; Create PDF(s) across several source folders opens one of them.
+            first = self._ctx.outputs[0]
+            self._output_dir = first if first.is_dir() else first.parent
+        self.open_output.setEnabled(self._output_dir is not None)
         if self._worker is not None:
             self._worker.deleteLater()
         self._worker = None
         self._refresh_buttons()
 
+    @Slot(int, int)
+    def _on_progress(self, done: int, total: int) -> None:
+        self.progress.setRange(0, total)
+        self.progress.setValue(done)
+        self.progress.setFormat("%v of %m")
+        self.progress.setTextVisible(True)
+
+    def _cancel(self) -> None:
+        if self._worker is not None:
+            self._worker.requestInterruption()
+            self.cancel_button.setEnabled(False)
+            self.log("cancelling after the current file...")
+
+    def _open_output(self) -> None:
+        if self._output_dir is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._output_dir)))
+
     def closeEvent(self, event: QCloseEvent) -> None:
         # Destroying a running QThread aborts the process; refuse to close until the job is done.
         if self._worker is not None:
-            self.log("still working - wait for 'done' before closing")
+            self.log("still working - press Cancel or wait for 'done'")
             event.ignore()
         else:
             if self._update_worker is not None:
                 self._update_worker.wait()  # bounded by the request timeout
+            settings().setValue("geometry", self.saveGeometry())
             super().closeEvent(event)
 
     # --- logging -----------------------------------------------------------
@@ -283,6 +328,8 @@ def main() -> None:
     QGuiApplication.styleHints().colorSchemeChanged.connect(_follow_system_scheme)
     window = MainWindow()
     window.show()
+    # Files from Send To, "Open with" or the command line. arguments() has Qt's own flags stripped.
+    window._report_skipped(window.queue.add_paths([Path(a) for a in app.arguments()[1:]]))
     if check_on_startup():
         QTimer.singleShot(1500, lambda: window._check_updates(manual=False))  # after the window has painted
     sys.exit(app.exec())

@@ -149,3 +149,31 @@ def test_split_by_toc_sorts_a_jumbled_contents(tmp_path: Path):
 def test_split_by_toc_strips_control_characters(tmp_path: Path):
     src = _bookmarked(tmp_path, [[1, "Two\nlines", 1]], pages=1)
     assert split_by_toc(src, tmp_path / "out")[0].name == "book-01 Two-lines.pdf"
+
+
+def test_protect_unlock_round_trip(make_pdf, tmp_path: Path):
+    from pdf_helper.core.pdf import protect, unlock
+
+    src = make_pdf("a.pdf", 3)
+    locked, opened = tmp_path / "l.pdf", tmp_path / "u.pdf"
+    protect(src, locked, "pw")
+    assert pymupdf.open(locked).needs_pass
+    with pytest.raises(ValueError, match="wrong password for l.pdf"):
+        unlock(locked, opened, "nope")
+    unlock(locked, opened, "pw")
+    with pymupdf.open(opened) as doc:
+        assert not doc.needs_pass and doc.page_count == 3
+    with pytest.raises(ValueError, match="a.pdf is not password-protected"):
+        unlock(src, tmp_path / "x.pdf", "pw")
+    with pytest.raises(ValueError, match="input files"):
+        protect(src, src, "pw")
+
+
+def test_metadata_round_trip_keeps_other_fields(make_pdf, tmp_path: Path):
+    from pdf_helper.core.pdf import metadata, set_metadata
+
+    src, mid, out = make_pdf("a.pdf", 1), tmp_path / "m.pdf", tmp_path / "o.pdf"
+    set_metadata(src, mid, {"title": "T", "author": "A"})
+    set_metadata(mid, out, {"subject": "S"})
+    got = metadata(out)
+    assert (got["title"], got["author"], got["subject"]) == ("T", "A", "S") and "encryption" not in got

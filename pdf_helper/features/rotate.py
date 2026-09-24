@@ -23,6 +23,7 @@ def prepare(ctx: FeatureContext) -> tuple[int, list[int] | None, Path] | None:
 def run(ctx: FeatureContext, params: tuple[int, list[int] | None, Path]) -> None:
     degrees, pages, out = params
     rotate(ctx.files[0], degrees, pages, out)
+    ctx.outputs.append(out)
     ctx.log(f"rotated {'all' if pages is None else len(pages)} page(s) by {degrees} -> {out}")
 
 

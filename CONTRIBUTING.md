@@ -74,10 +74,11 @@ A button is a `Feature`. The app knows nothing else about it — no registration
 
 
    def run(ctx: FeatureContext, out_dir: Path) -> None:
-       def one(src: Path) -> None:
+       def one(src: Path) -> Path:
            out = fresh(out_dir / f"{src.stem}-grey.pdf")
            grayscale(src, out)
            ctx.log(f"{src.name}: grey -> {out}")
+           return out  # feeds "Open output folder"
 
        each_file(ctx, one)
 
@@ -107,7 +108,9 @@ A button is a `Feature`. The app knows nothing else about it — no registration
 Helpers you should be using rather than reimplementing:
 
 - **`each_file(ctx, fn)`** in `features/base.py` — the batch loop. A failure on one file is logged and the rest of
-  the queue still runs; the count is raised at the end.
+  the queue still runs; the count is raised at the end. It also reports progress and honours Cancel between
+  files. `fn` returns the file or folder it wrote (or `None`); a feature that does not use `each_file` appends to
+  `ctx.outputs` itself.
 - **`fresh(path)`** in `core/paths.py` — appends ` (2)`, ` (3)` until the name is free. Every generated output name
   goes through it.
 - **`ask_page_spec`** in `ui/dialogs.py` — the `1-3,5` prompt. Re-asks until the spec parses, and returns `[]` for
