@@ -52,8 +52,15 @@ $stage = "dist\$name"
 Copy-Item 'README.md' $stage
 
 $setup = "dist\$name-$version-setup.exe"
-$iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-if (Test-Path $iscc) {
+# winget installs Inno Setup per-user under LOCALAPPDATA; the installer from jrsoftware.org and
+# the choco package the release workflow uses both land in Program Files (x86).
+$iscc = @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) { $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source }
+if ($iscc) {
     if (Test-Path $setup) { Remove-Item $setup }
     & $iscc /Qp /DAppVersion=$version "$PSScriptRoot\packaging\pdf-helper.iss"
     if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
