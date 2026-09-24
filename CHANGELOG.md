@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-24
+
 ### Added
 
 - `LICENSE` — MIT, `Copyright (c) AragusNZ`. `build.ps1` copies it into the build, so it ships in the
