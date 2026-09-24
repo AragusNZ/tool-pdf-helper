@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-24
+
 All notable changes to this project are documented here, in
 [Keep a Changelog](https://keepachangelog.com) format.
 
