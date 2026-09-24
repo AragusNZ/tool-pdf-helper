@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-25
+
 ### Added
 
 - Update check: on start, PDF Helper asks GitHub for the latest release and, if it is newer, offers to open
