@@ -20,6 +20,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\pdf_helper\assets\icon.ico
+LicenseFile=..\LICENSE
 UninstallDisplayIcon={app}\PdfHelper.exe
 
 [Files]

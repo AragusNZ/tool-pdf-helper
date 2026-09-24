@@ -2,7 +2,30 @@
 
 Small Windows desktop tool for everyday PDF jobs. Drop files into the queue, press a button.
 
-The buttons sit on five tabs.
+No account, no upload, no internet: every file is processed on your own machine.
+
+## Install
+
+Download the latest **`PdfHelper-<version>-setup.exe`** from
+[Releases](https://github.com/AragusNZ/tool-pdf-helper/releases) and run it.
+
+- It installs per-user into `%LOCALAPPDATA%\Programs\PDF Helper` and never asks for admin rights.
+- Windows 10 or 11, 64-bit. Nothing else to install, unless you feed it Office documents — see below.
+- Windows will warn about the publisher. That is expected, and [what to do](#windows-security-warnings) is below.
+- `PdfHelper-<version>.zip` is the same program as a plain folder, for a machine where installers are blocked.
+  Unzip it anywhere and run `PdfHelper.exe`.
+- To remove it: **Settings > Apps > Installed apps > PDF Helper > Uninstall**.
+
+Verify a download against `SHA256SUMS.txt` from the same release:
+
+```
+Get-FileHash .\PdfHelper-<version>-setup.exe -Algorithm SHA256
+```
+
+## What it does
+
+Add files with **Add files...** or by dropping them on the file list, then press a button. Every button acts on the
+whole queue. The buttons sit on five tabs.
 
 ### Convert
 
@@ -13,7 +36,7 @@ The buttons sit on five tabs.
 - **Merge to one PDF** – combines all queued files, in queue order, into a single PDF. Non-PDF files are converted
   first, images with the same page-size choice as Create PDF(s).
 - **PDF to images** – one PNG per page at chosen DPI.
-- **PDF to Word** – `.docx` via pdf2docx. Layout approximate. This dependency pulls in numpy + OpenCV and adds roughly 100 MB to the exe.
+- **PDF to Word** – `.docx` via pdf2docx. Layout approximate.
 - **Extract content** – for each PDF, embedded images go to `<name>-content/images/`, plain text to `<name>-content/<name>.rtf`.
 - **Tables to CSV** – every table found in each PDF, one `p<page>-<n>.csv` per table in `<name>-tables/`. Written as
   UTF-8 with a byte-order mark, which is what Excel needs to read accented text correctly.
@@ -55,23 +78,28 @@ The buttons sit on five tabs.
 - **Resize pages** – scale every page onto A4, A3, A5, Letter, Legal, HD or 4K, portrait, landscape or turned to match
   the source. Writes `<name>-a4.pdf`.
 
-Fonts for **Add text**: the 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the `pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). They are embedded in the PDF, so the output renders the same anywhere.
+## Good to know
 
-The queue takes **Delete** to drop the selected rows, and **Add files...** opens where the last batch came from.
-The log file is capped at 1 MB with one previous copy kept.
+**Inputs.** PDF; images (png, jpg, gif, bmp, tiff, webp); txt, epub, xps, svg, cbz; Office documents
+(doc/docx/rtf/odt, xls/xlsx/ods/csv, ppt/pptx/odp). Office documents are converted with Microsoft Office if it is
+installed, otherwise LibreOffice — one of the two must be present for those inputs, and nothing else needs it.
+
+**Nothing is ever overwritten.** The source file is refused as a target, and an output whose name is already taken
+gets ` (2)`, ` (3)` and so on appended, so a second run never replaces the first one's files.
+
+**One bad file does not stop the batch.** The failure is logged and the rest of the queue still runs. Full
+tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); the log pane shows the path after any error.
+The log is capped at 1 MB with one previous copy kept.
+
+**Fonts for Add text.** The 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the
+`pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). They are embedded in the
+PDF, so the output renders the same anywhere.
+
+**Queue.** **Delete** drops the selected rows; **Add files...** opens where the last batch came from.
 
 **View > Theme** switches between System, Light and Dark; the choice is remembered. On System the app follows the
 Windows light/dark setting and repaints when it changes. On Windows the native Windows 11 widget style draws the
 controls; elsewhere it falls back to Fusion with the same colours.
-
-Outputs never overwrite anything. The source file is refused as a target, and an output whose name is already taken
-gets ` (2)`, ` (3)` and so on appended, so a second run never replaces the first one's files.
-A failure on one file is logged and the rest of the queue still runs. Full tracebacks go to `PdfHelper.log` in the
-system temp folder (`%TEMP%` on Windows); the log pane shows the path after any error.
-
-Supported inputs: PDF; images (png, jpg, gif, bmp, tiff, webp); txt, epub, xps, svg, cbz; Office documents (doc/docx/rtf/odt, xls/xlsx/ods/csv, ppt/pptx/odp).
-
-Office documents are converted with Microsoft Office if it is installed, otherwise LibreOffice. One of the two must be present for Office inputs.
 
 ## Limitations
 
@@ -82,6 +110,7 @@ Office documents are converted with Microsoft Office if it is installed, otherwi
 - N-up and Resize pages copy page content only: annotations, form fields and links do not come across.
 - Tables to CSV finds tables the way PyMuPDF does, from ruled lines and alignment. A table drawn with neither comes
   out as no table at all.
+- PDF to Word approximates the layout. Treat the `.docx` as a starting point, not a faithful copy.
 
 ## Windows security warnings
 
@@ -99,53 +128,26 @@ tool is not yet worth one. So Windows will not vouch for the publisher, and thre
 
   If that does not help, check Windows Security > Protection history for a block on `PdfHelper.exe`.
 - **An antivirus flags the exe.** A false positive: PyInstaller bundles a Python runtime, and that shape is what
-  gets flagged. Verify the download against `SHA256SUMS.txt` before allowing it:
+  gets flagged. Verify the download against `SHA256SUMS.txt` before allowing it, as shown under [Install](#install).
 
-  ```
-  Get-FileHash .\PdfHelper-<version>-setup.exe -Algorithm SHA256
-  ```
+Only download from the [Releases page](https://github.com/AragusNZ/tool-pdf-helper/releases). A copy passed around
+by hand is both unverifiable and slower to earn SmartScreen's trust.
 
-The installer is per-user — it lands in `%LOCALAPPDATA%\Programs\PDF Helper` and never asks for admin rights.
+## Something went wrong
 
-## Run from source
+1. Read the log pane at the bottom of the window — the error names the file it failed on.
+2. Open `PdfHelper.log` in `%TEMP%` for the full traceback. The log pane prints its path after any error.
+3. Report it at [Issues](https://github.com/AragusNZ/tool-pdf-helper/issues) with that traceback, the button you
+   pressed and the version from **Help > About**.
 
-Linux / WSL (needs WSLg for the window):
+## Developing
 
-```
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pdf_helper
-pytest            # add --cov for a coverage report
-```
+Python 3.12, PySide6 and PyMuPDF. Source, issues and the full change history live at
+[AragusNZ/tool-pdf-helper](https://github.com/AragusNZ/tool-pdf-helper). To run it from source, add a button,
+run the tests or build the installer, see
+[CONTRIBUTING.md](https://github.com/AragusNZ/tool-pdf-helper/blob/main/CONTRIBUTING.md).
 
-Windows: same, but `py -3 -m venv .venv` and `.venv\Scripts\activate`.
+## Licence
 
-## Build the exe
-
-Always built with Windows Python, PyInstaller cannot cross-compile.
-
-- From WSL: `./build.sh` (calls the Windows `py` launcher; venv and build dir go to `%LOCALAPPDATA%\pdf-helper`).
-- From Windows: double-click `build.cmd` or run `build.ps1`.
-
-Inno Setup 6 builds the installer: `winget install JRSoftware.InnoSetup`. Without it the build still runs and just
-skips that one step.
-
-Output in `dist\`:
-
-- `PdfHelper\PdfHelper.exe` with its `_internal\` folder — the app itself, a `--onedir` build.
-- `PdfHelper-<version>-setup.exe` — the installer, and what you hand to anyone else.
-- `PdfHelper-<version>.zip` — the same folder zipped, for a machine that cannot run an installer.
-- `SHA256SUMS.txt` — checksums of both.
-
-Releases are cut by GitHub Actions on a `v*` tag, not by copying `dist\` around. Always send people the release
-URL: Windows tracks reputation per file and per download source, and a hand-copied exe starts from zero every time.
-
-The exe and window icon come from `pdf_helper/assets/icon.ico`. After editing `icon.svg` or `icon-16.svg`, regenerate
-it with `python tools/make_icon.py` and commit the result.
-
-Set `PDF_HELPER_NO_COM=1` to force the LibreOffice path when testing.
-
-## Contributing
-
-`AGENTS.md` has the module layout, the `Feature` contract a new button implements, and the
-conventions that bite. `CHANGELOG.md` records every visible change under `## [Unreleased]`.
+MIT — see [LICENSE](https://github.com/AragusNZ/tool-pdf-helper/blob/main/LICENSE), which also ships in the
+install folder. PyMuPDF is AGPL-licensed; a build that links it and is redistributed carries that obligation.

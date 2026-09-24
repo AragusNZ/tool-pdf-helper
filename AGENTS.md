@@ -17,8 +17,11 @@ Both are generated from one source; edit `~/dev/ai-agents`, never the delivered 
 
 A Windows desktop tool for everyday PDF jobs: files go into a queue, a button acts on all of them.
 PySide6 for the window, PyMuPDF for everything that touches a PDF. Distributed as a PyInstaller onedir
-build wrapped in an Inno Setup installer, cut by the `release` workflow on a `v*` tag; `README.md` is the
-user-facing half of this file.
+build wrapped in an Inno Setup installer, cut by the `release` workflow on a `v*` tag.
+
+`README.md` is user-facing only and `build.ps1` copies it into the shipped build, so nothing about building
+or contributing belongs in it. `CONTRIBUTING.md` is the human long form of this file: release steps, the
+`Feature` example in full, and why each build flag is there.
 
 ## Layout
 
@@ -79,6 +82,8 @@ and every generated name goes through `fresh` in `core/paths.py`, which appends 
 . .venv/bin/activate
 pytest                     # the whole gate; --cov for a coverage report
 ```
+
+CI fails under 95% coverage.
 
 The exe is built with Windows Python (PyInstaller cannot cross-compile): `./build.sh` from WSL, or
 `build.cmd` / `build.ps1` from Windows.

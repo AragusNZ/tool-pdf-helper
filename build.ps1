@@ -29,7 +29,7 @@ VSVersionInfo(
       StringStruct('FileDescription', 'PDF Helper'),
       StringStruct('FileVersion', '$version.0'),
       StringStruct('InternalName', '$name'),
-      StringStruct('LegalCopyright', 'Copyright (c) 2026 Craig Gainsborough'),
+      StringStruct('LegalCopyright', 'Copyright (c) AragusNZ'),
       StringStruct('OriginalFilename', '$name.exe'),
       StringStruct('ProductName', 'PDF Helper'),
       StringStruct('ProductVersion', '$version.0')])]),
@@ -50,6 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 # --onedir already wrote dist\PdfHelper\PdfHelper.exe and its _internal\ beside it.
 $stage = "dist\$name"
 Copy-Item 'README.md' $stage
+Copy-Item 'LICENSE' $stage
 
 $setup = "dist\$name-$version-setup.exe"
 # winget installs Inno Setup per-user under LOCALAPPDATA; the installer from jrsoftware.org and

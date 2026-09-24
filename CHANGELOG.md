@@ -1,26 +1,38 @@
 # Changelog
 
+All notable changes to this project are documented here, in
+[Keep a Changelog](https://keepachangelog.com) format.
+
 ## [Unreleased]
+
+### Added
+
+- `LICENSE` — MIT, `Copyright (c) AragusNZ`. `build.ps1` copies it into the build, so it ships in the
+  installer and the zip alongside the README, and the installer now opens on a licence page.
 
 ### Changed
 
 - The exe now carries a version resource, so Windows shows "PDF Helper", "AragusNZ" and the version in its
-  properties and in the SmartScreen prompt instead of calling it an unknown publisher.
+  properties and in the SmartScreen prompt instead of calling it an unknown publisher. The
+  `LegalCopyright` field reads `Copyright (c) AragusNZ`, with no personal name and no year to go stale.
 - Built with `--onedir` and `--noupx` instead of `--onefile`. The onefile bootloader unpacked a Python runtime
   into `%TEMP%` on every launch, which is what antivirus flagged; startup is also faster now.
 - Distributed as `PdfHelper-<version>-setup.exe`, an Inno Setup installer that installs per-user into
   `%LOCALAPPDATA%\Programs\PDF Helper` with no admin prompt. The zip is still built alongside it.
 - Checksums moved to `dist\SHA256SUMS.txt`, covering the installer as well as the zip, and written as ASCII so
   `sha256sum -c` can read them.
-- A `v*` tag now builds and publishes a GitHub release from a Windows runner; the `check` workflow moved to
-  pushes on `main` and pull requests.
+- A `v*` tag now builds and publishes a GitHub release from a Windows runner, so the download has a stable URL
+  that SmartScreen can accumulate reputation against.
 - `README.md` gained a "Windows security warnings" section: what the SmartScreen prompt means, `Unblock-File`
   for a download Windows refuses to open, and how to verify against the checksums.
+- `README.md` is now user-facing only — install, what each button does, limitations, Windows security warnings
+  and where the log is. It is the copy `build.ps1` ships inside the installer and the zip, so the build,
+  release and contributor material that used to ride along with it moved to a new `CONTRIBUTING.md`.
 
 ## [1.0.1] - 2026-09-24
 
-All notable changes to this project are documented here, in
-[Keep a Changelog](https://keepachangelog.com) format.
+Release plumbing only; nothing changed in the app itself. The `check` workflow moved to `v*` tags and
+pull requests.
 
 ## [1.0.0] - 2026-09-24
 
