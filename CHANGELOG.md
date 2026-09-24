@@ -1,9 +1,23 @@
 # Changelog
 
-## [Unreleased]
-
 All notable changes to this project are documented here, in
 [Keep a Changelog](https://keepachangelog.com) format.
+
+## [Unreleased]
+
+### Fixed
+
+- `pytest` collected nothing outside an installed checkout — every test module failed on
+  `No module named 'pdf_helper'`, so the `check` workflow was red. `pythonpath = ["."]` in
+  `pyproject.toml` puts the repo root on `sys.path`.
+
+### Added
+
+- `tests/test_pipeline.py` — end-to-end runs of the real features through `MainWindow`: queue,
+  button gating, dialogs, worker thread and the files on disk, including a batch where one PDF is
+  unreadable and the rest must still run. Plus the `main()` entry point, the theme menu and the
+  About box.
+- CI runs `pytest --cov --cov-fail-under=95`, so a coverage regression fails the workflow.
 
 ## [0.2.0] - 2026-09-24
 
