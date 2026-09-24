@@ -59,11 +59,7 @@ it with `python tools/make_icon.py` and commit the result.
 
 Set `PDF_HELPER_NO_COM=1` to force the LibreOffice path when testing.
 
-## Adding a feature
+## Contributing
 
-1. Create `pdf_helper/features/<name>.py` exposing `FEATURE = Feature(label=..., prepare=..., run=...)`.
-   `prepare` runs on the UI thread and may open dialogs; `run` runs on a worker thread and must not touch Qt.
-2. Append it to `FEATURES` in `pdf_helper/features/__init__.py`.
-3. Put reusable PDF logic in `pdf_helper/core/` with a test under `tests/`.
-
-Layout: `core/` pure utilities (no Qt), `features/` one file per button, `ui/` Qt widgets, `app.py` wires them.
+`AGENTS.md` has the module layout, the `Feature` contract a new button implements, and the
+conventions that bite. `CHANGELOG.md` records every visible change under `## [Unreleased]`.

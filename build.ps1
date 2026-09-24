@@ -11,12 +11,12 @@ if (-not (Test-Path $py)) { py -3 -m venv "$work\venv" }
 & $py -m pip install --quiet -r requirements.txt -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 
-$version = & $py -c "import pdf_helper; print(pdf_helper.__version__)"
+$version = (Get-Content "$PSScriptRoot\VERSION" -Raw).Trim()
 $name = 'PdfHelper'
 
 # Asset paths are absolute: a relative --add-data/--icon resolves against --specpath, which is outside the repo.
 & $py -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --collect-submodules pymupdf_fonts --icon "$PSScriptRoot\pdf_helper\assets\icon.ico" `
-    --add-data "$PSScriptRoot\pdf_helper\assets;pdf_helper\assets" --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
+    --add-data "$PSScriptRoot\pdf_helper\assets;pdf_helper\assets" --add-data "$PSScriptRoot\VERSION;." --workpath "$work\build" --specpath "$work" pdf_helper\__main__.py
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
 
 $stage = "dist\$name"
