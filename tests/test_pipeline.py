@@ -8,13 +8,14 @@ import logging
 import logging.handlers
 from pathlib import Path
 
+import pymupdf
 import pytest
 
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.convert import IMAGE_SIZE
-from pdf_helper.features import create_pdf, merge, split, to_images, watermark
+from pdf_helper.features import create_pdf, merge, redact, split, to_images, watermark
 
 
 def _run(window: MainWindow, label: str, qapp) -> str:
@@ -145,3 +146,32 @@ def test_theme_menu_and_about(qapp, monkeypatch):
         app_module.settings().remove("theme")
     w._about()
     assert about and "PDF Helper" in about[0][2]
+
+
+def test_redact_pipeline(qapp, make_pdf, tmp_path: Path, monkeypatch):
+    """The dialog runs on the UI thread and the removal on the worker: check the whole chain once."""
+    out_dir = tmp_path / "clean"
+    out_dir.mkdir()
+
+    class _Dialog:
+        def __init__(self, parent, src: Path):
+            self.src = src
+
+        def exec(self) -> bool:
+            return True
+
+        def params(self) -> tuple:
+            return ({0: [(60.0, 60.0, 200.0, 80.0)]}, "page 2", False)
+
+    monkeypatch.setattr(redact, "RedactDialog", _Dialog)
+    monkeypatch.setattr(redact, "choose_directory", lambda *a: out_dir)
+    w = MainWindow()
+    w.queue.add_paths([make_pdf("a.pdf", 2), make_pdf("b.pdf", 1)])
+
+    text = _run(w, "Redact", qapp)
+
+    assert sorted(p.name for p in out_dir.glob("*.pdf")) == ["a-redacted.pdf", "b-redacted.pdf"]
+    with pymupdf.open(out_dir / "a-redacted.pdf") as doc:
+        # the box took all of page 1; the phrase took "page 2" off page 2 and left the rest
+        assert doc[0].get_text().strip() == "" and doc[1].get_text().strip() == "a.pdf"
+    assert "ERROR" not in text and text.rstrip().endswith("done")

@@ -136,3 +136,16 @@ def test_redact_refuses_its_own_source(make_pdf):
     src = make_pdf("a.pdf", 1)
     with pytest.raises(ValueError, match="one of the input files"):
         redact(src, src, None, "x")
+
+
+def test_split_by_toc_sorts_a_jumbled_contents(tmp_path: Path):
+    """A contents list naming a later page first must not swallow the chapter before it."""
+    src = _bookmarked(tmp_path, [[1, "Later", 4], [1, "Earlier", 2]])
+    parts = split_by_toc(src, tmp_path / "out")
+    assert [p.name for p in parts] == ["book-01 Earlier.pdf", "book-02 Later.pdf"]
+    assert [page_count(p) for p in parts] == [2, 3]  # pages 2-3 and 4-6; page 1 is before any bookmark
+
+
+def test_split_by_toc_strips_control_characters(tmp_path: Path):
+    src = _bookmarked(tmp_path, [[1, "Two\nlines", 1]], pages=1)
+    assert split_by_toc(src, tmp_path / "out")[0].name == "book-01 Two-lines.pdf"

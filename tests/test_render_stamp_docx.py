@@ -216,3 +216,15 @@ def test_impose_refuses_its_own_source(make_pdf):
     src = make_pdf("a.pdf", 1)
     with pytest.raises(ValueError, match="one of the input files"):
         impose(src, src)
+
+
+def test_impose_keeps_a_rotated_page_upright(tmp_path: Path):
+    src, out = tmp_path / "rot.pdf", tmp_path / "2up.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        page.insert_text((72, 72), "UPRIGHT")
+        page.set_rotation(90)  # displayed landscape, so the sheet follows it
+        doc.save(src)
+    impose(src, out, size=PAGE_SIZES["A4"])
+    with pymupdf.open(out) as doc:
+        assert doc[0].rect.width > doc[0].rect.height and doc[0].get_text().strip() == "UPRIGHT"

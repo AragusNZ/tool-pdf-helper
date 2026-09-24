@@ -382,9 +382,17 @@ def test_redact_dialog_undo_and_clear(qapp, make_pdf):
     assert dialog.params()[0] == {} and not dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
 
 
+def test_redact_dialog_ignores_a_blank_phrase(qapp, make_pdf):
+    """A phrase of spaces would black out every gap between words, so it does not count as input."""
+    dialog = RedactDialog(None, make_pdf("a.pdf", 1))
+    dialog.find.setText("   ")
+    assert not dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
+    assert dialog.params() == ({}, "", False)
+
+
 def test_redact_dialog_text_alone_is_enough(qapp, make_pdf):
     dialog = RedactDialog(None, make_pdf("a.pdf", 1))
-    dialog.find.setText("secret")
+    dialog.find.setText(" secret ")
     dialog.match_case.setChecked(True)
     assert dialog.buttons.button(QDialogButtonBox.StandardButton.Ok).isEnabled()
-    assert dialog.params() == ({}, "secret", True)
+    assert dialog.params() == ({}, "secret", True)  # trimmed

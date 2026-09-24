@@ -95,7 +95,7 @@ def grayscale(src: Path, out: Path) -> None:
 
 def _safe_stem(title: str) -> str:
     """A bookmark title reduced to something a filesystem accepts."""
-    cleaned = re.sub(r'[\\/:*?"<>|]', "-", title).strip(" .")
+    cleaned = re.sub(r'[\\/:*?"<>|]|[\x00-\x1f]', "-", title).strip(" .")
     return cleaned[:60] or "untitled"
 
 
@@ -104,7 +104,10 @@ def split_by_toc(src: Path, out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     with open_pdf(src) as doc:
-        starts = [(entry[2] - 1, entry[1]) for entry in doc.get_toc() if entry[0] == 1 and entry[2] > 0]
+        # Sorted by page: a table of contents that lists its entries out of order would otherwise
+        # pair a chapter with an earlier bookmark's page and drop everything between them.
+        found = [(entry[2] - 1, entry[1]) for entry in doc.get_toc() if entry[0] == 1 and entry[2] > 0]
+        starts = sorted(found, key=lambda item: item[0])  # stable: same-page entries keep their order
         if not starts:
             raise ValueError(f"{src.name} has no top-level bookmarks")
         bounds = [s[0] for s in starts[1:]] + [doc.page_count]

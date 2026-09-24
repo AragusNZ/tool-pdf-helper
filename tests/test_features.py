@@ -583,7 +583,7 @@ def test_find_text_counts_repeats(tmp_path: Path, log):
     assert log.lines[-1] == "r.pdf: 2 hit(s) on 1 page(s) - p1 x2"
 
 
-@pytest.mark.parametrize("needle, case", [(None, "x"), ("", "x"), ("a", None)])
+@pytest.mark.parametrize("needle, case", [(None, "x"), ("", "x"), ("   ", "x"), ("a", None)])
 def test_find_text_prepare_cancel(make_pdf, log, monkeypatch, needle, case):
     monkeypatch.setattr(find_text, "ask_text", lambda *a: needle)
     monkeypatch.setattr(find_text, "ask_choice", lambda *a: case)
@@ -632,3 +632,14 @@ def test_redact_prepare_cancel(make_pdf, log, monkeypatch, accepted):
     _fake_redact_dialog(monkeypatch, accepted)
     monkeypatch.setattr(redact, "choose_directory", lambda *a: None)
     assert redact.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
+def test_find_text_cuts_a_long_page_list_short(tmp_path: Path, log):
+    src = tmp_path / "long.pdf"
+    with pymupdf.open() as doc:
+        for _ in range(find_text.SHOWN + 3):
+            doc.new_page().insert_text((72, 72), "bolt")
+        doc.save(src)
+    find_text.FEATURE.run(FeatureContext([src], log), ("bolt", False))
+    assert log.lines[-1].endswith(f"p{find_text.SHOWN}, and 3 more")
+    assert f"{find_text.SHOWN + 3} hit(s) on {find_text.SHOWN + 3} page(s)" in log.lines[-1]

@@ -141,10 +141,11 @@ class RedactDialog(QDialog):
         self._refresh()
 
     def _update_ok(self) -> None:
-        ready = any(self.boxes.values()) or bool(self.find.text())
+        ready = any(self.boxes.values()) or bool(self.find.text().strip())
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(ready)
 
     # --- results -----------------------------------------------------------
     def params(self) -> tuple[dict[int, list[Box]], str, bool]:
         """Feature parameters: boxes by 0-based page, the phrase to remove, and whether case counts."""
-        return ({k: v for k, v in self.boxes.items() if v}, self.find.text(), self.match_case.isChecked())
+        needle = self.find.text().strip()  # " " would black out every gap between words
+        return ({k: v for k, v in self.boxes.items() if v}, needle, self.match_case.isChecked())
