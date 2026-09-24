@@ -1,9 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
 All notable changes to this project are documented here, in
 [Keep a Changelog](https://keepachangelog.com) format.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-24
 
 ### Added
 
