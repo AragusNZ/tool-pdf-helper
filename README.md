@@ -83,6 +83,30 @@ Office documents are converted with Microsoft Office if it is installed, otherwi
 - Tables to CSV finds tables the way PyMuPDF does, from ruled lines and alignment. A table drawn with neither comes
   out as no table at all.
 
+## Windows security warnings
+
+The build is **not code-signed** — a certificate needs a hardware token or cloud HSM and an annual fee, and this
+tool is not yet worth one. So Windows will not vouch for the publisher, and three things can happen:
+
+- **"Windows protected your PC."** SmartScreen does not recognise the file yet. Click **More info**, then
+  **Run anyway**. This fades as more people download the same release.
+- **"Windows cannot access the specified device, path or file."** The download carries a Mark-of-the-Web, or
+  Defender has quarantined it. Clear the first with PowerShell in the download folder:
+
+  ```
+  Unblock-File .\PdfHelper-<version>-setup.exe
+  ```
+
+  If that does not help, check Windows Security > Protection history for a block on `PdfHelper.exe`.
+- **An antivirus flags the exe.** A false positive: PyInstaller bundles a Python runtime, and that shape is what
+  gets flagged. Verify the download against `SHA256SUMS.txt` before allowing it:
+
+  ```
+  Get-FileHash .\PdfHelper-<version>-setup.exe -Algorithm SHA256
+  ```
+
+The installer is per-user — it lands in `%LOCALAPPDATA%\Programs\PDF Helper` and never asks for admin rights.
+
 ## Run from source
 
 Linux / WSL (needs WSLg for the window):
@@ -103,7 +127,18 @@ Always built with Windows Python, PyInstaller cannot cross-compile.
 - From WSL: `./build.sh` (calls the Windows `py` launcher; venv and build dir go to `%LOCALAPPDATA%\pdf-helper`).
 - From Windows: double-click `build.cmd` or run `build.ps1`.
 
-Output: `dist\PdfHelper\PdfHelper.exe` plus `dist\PdfHelper-<version>.zip` and its `.sha256`. Copy `dist\` across.
+Inno Setup 6 builds the installer: `winget install JRSoftware.InnoSetup`. Without it the build still runs and just
+skips that one step.
+
+Output in `dist\`:
+
+- `PdfHelper\PdfHelper.exe` with its `_internal\` folder — the app itself, a `--onedir` build.
+- `PdfHelper-<version>-setup.exe` — the installer, and what you hand to anyone else.
+- `PdfHelper-<version>.zip` — the same folder zipped, for a machine that cannot run an installer.
+- `SHA256SUMS.txt` — checksums of both.
+
+Releases are cut by GitHub Actions on a `v*` tag, not by copying `dist\` around. Always send people the release
+URL: Windows tracks reputation per file and per download source, and a hand-copied exe starts from zero every time.
 
 The exe and window icon come from `pdf_helper/assets/icon.ico`. After editing `icon.svg` or `icon-16.svg`, regenerate
 it with `python tools/make_icon.py` and commit the result.

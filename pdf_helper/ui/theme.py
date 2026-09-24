@@ -96,7 +96,8 @@ QListWidget::item:selected { background: palette(highlight); color: palette(high
 
 
 def asset_path(name: str) -> Path:
-    """Locate a bundled asset. PyInstaller --onefile unpacks them under sys._MEIPASS."""
+    """Locate a bundled asset. PyInstaller puts them under sys._MEIPASS - the _internal folder
+    beside the exe in a --onedir build."""
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent.parent))
     return base / "pdf_helper" / "assets" / name
 

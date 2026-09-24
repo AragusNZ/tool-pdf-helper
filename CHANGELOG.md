@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The exe now carries a version resource, so Windows shows "PDF Helper", "AragusNZ" and the version in its
+  properties and in the SmartScreen prompt instead of calling it an unknown publisher.
+- Built with `--onedir` and `--noupx` instead of `--onefile`. The onefile bootloader unpacked a Python runtime
+  into `%TEMP%` on every launch, which is what antivirus flagged; startup is also faster now.
+- Distributed as `PdfHelper-<version>-setup.exe`, an Inno Setup installer that installs per-user into
+  `%LOCALAPPDATA%\Programs\PDF Helper` with no admin prompt. The zip is still built alongside it.
+- Checksums moved to `dist\SHA256SUMS.txt`, covering the installer as well as the zip, and written as ASCII so
+  `sha256sum -c` can read them.
+- A `v*` tag now builds and publishes a GitHub release from a Windows runner; the `check` workflow moved to
+  pushes on `main` and pull requests.
+- `README.md` gained a "Windows security warnings" section: what the SmartScreen prompt means, `Unblock-File`
+  for a download Windows refuses to open, and how to verify against the checksums.
+
 ## [1.0.1] - 2026-09-24
 
 All notable changes to this project are documented here, in

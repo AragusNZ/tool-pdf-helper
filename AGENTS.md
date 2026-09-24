@@ -16,8 +16,9 @@ Both are generated from one source; edit `~/dev/ai-agents`, never the delivered 
 ## What this is
 
 A Windows desktop tool for everyday PDF jobs: files go into a queue, a button acts on all of them.
-PySide6 for the window, PyMuPDF for everything that touches a PDF. Distributed as a PyInstaller onefile
-exe; `README.md` is the user-facing half of this file.
+PySide6 for the window, PyMuPDF for everything that touches a PDF. Distributed as a PyInstaller onedir
+build wrapped in an Inno Setup installer, cut by the `release` workflow on a `v*` tag; `README.md` is the
+user-facing half of this file.
 
 ## Layout
 
@@ -30,7 +31,13 @@ pdf_helper/
   assets/         icon.ico and the SVGs it is generated from
 tools/make_icon.py  regenerates assets/icon.ico from the SVGs
 tests/            pytest, one file per core module or feature group
+packaging/pdf-helper.iss  the Inno Setup installer, compiled by build.ps1
 ```
+
+The exe is unsigned, so everything about the build that Windows reads as trust or as an antivirus
+heuristic is deliberate: `--onedir` (not onefile — no self-extract into `%TEMP%`), `--noupx`, the
+`--version-file` resource `build.ps1` generates from `VERSION`, and `PrivilegesRequired=lowest` in the
+`.iss` so the installer never triggers UAC. Do not undo one of those to shorten the build.
 
 `VERSION` at the root is the only version source. `pdf_helper/__init__.py` reads it and `build.ps1`
 bundles it into the exe, so the title bar and About box report the built version. Never hardcode it,
