@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-09
+
 ### Changed
 
 - Watermark, Add text, Add image, Page numbers and Replace text are now one **Edit** action: stack any number of
