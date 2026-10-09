@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pymupdf
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -25,15 +26,15 @@ from pdf_helper.core.convert import IMAGE_EXTS
 from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
-from pdf_helper.core.stamp import MM, fonts, image_size
+from pdf_helper.core.stamp import MM, fonts, image_size, stamp_image, stamp_text
 from pdf_helper.ui.preview import PagePreview, preview_px
 
 
 class PlaceDialog(QDialog):
     """Pick a point on a page plus the text or image to put there.
 
-    ``mode`` is "text" or "image". The preview shows the first queued PDF; the chosen point and
-    page spec are applied to every queued file.
+    ``mode`` is "text" or "image". The preview shows the first queued PDF with the text or image drawn on it as
+    the output will have it; click to place, drag it to move it. The point and page spec apply to every queued file.
     """
 
     def __init__(self, parent: QWidget | None, src: Path, mode: str, start: Path | None = None):
@@ -45,10 +46,15 @@ class PlaceDialog(QDialog):
         self.point: tuple[float, float] | None = None
         self.colour = QColor("black")
         self._aspect = 1.0  # image height / width
+        self._grab = (0.0, 0.0)  # where inside the placed box a drag picked it up
+        self._fits = True  # the last render managed to draw the text at that spot
+        self._timer = QTimer(self, singleShot=True, interval=50)  # coalesce keystrokes and drag moves into ~20 renders/s
+        self._timer.timeout.connect(self._render)
         self.setWindowTitle("Add text" if mode == "text" else "Add image")
 
         self.preview = PagePreview()
         self.preview.clicked.connect(self._on_click)
+        self.preview.dragged.connect(self._on_drag)
         self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1, suffix=f" of {self.total}")
         self.page_box.valueChanged.connect(self._render)
         self.spec = QLineEdit("1")
@@ -121,21 +127,52 @@ class PlaceDialog(QDialog):
 
     # --- interaction -------------------------------------------------------
     def _render(self) -> None:
+        """Draw the page with the text or image on it, as the output will have it. The red box is the grab handle."""
         if not self._spec_edited:
             self.spec.setText(str(self.page_box.value()))
-        png, width, _ = render_page_png(self.src, self.page_box.value() - 1, max_px=preview_px(self))
+        page, max_px, box = self.page_box.value() - 1, preview_px(self), self.box()
+        self._fits = True
+        try:
+            png, width, _ = render_page_png(self.src, page, max_px=max_px, stamp=self._stamp() if box else None)
+        except ValueError as exc:  # it does not fit there: show the bare page and say why
+            self._fits = False
+            self.error.setText(str(exc))
+            png, width, _ = render_page_png(self.src, page, max_px=max_px)
+        else:
+            if box:
+                self.error.clear()
         self.preview.show_page(png, width)
-        self._changed()
+        self.preview.draw_boxes([box] if box else [])
+        self._update_ok()
+
+    def _stamp(self):
+        """What the preview draws: the same page-level call the output is made with."""
+        if self.mode == "text":
+            rgb = (self.colour.redF(), self.colour.greenF(), self.colour.blueF())
+            font, size, text = self.font.currentData(), self.size.value(), self.text.text()
+            return lambda page: stamp_text(page, text, self.point, fontname=font, size=size, color=rgb)
+        return lambda page: stamp_image(page, Path(self.image.text()), self.box())
 
     def _on_click(self, x: float, y: float) -> None:
-        self.point = (x, y)
-        self.position.setText(f"{x / MM:.0f}, {y / MM:.0f} mm from top-left")
+        box = self.box()
+        if box and box[0] <= x <= box[2] and box[1] <= y <= box[3]:
+            self._grab = (x - box[0], y - box[1])  # picked up where it sits, so a drag moves it without a jump
+            return
+        self._grab = (0.0, 0.0)
+        self._move_to(x, y)
+
+    def _on_drag(self, x: float, y: float) -> None:
+        self._move_to(x - self._grab[0], y - self._grab[1])
+
+    def _move_to(self, x: float, y: float) -> None:
+        self.point = (max(x, 0.0), max(y, 0.0))
+        self.position.setText(f"{self.point[0] / MM:.0f}, {self.point[1] / MM:.0f} mm from top-left")
         self._changed()
 
     def _changed(self) -> None:
-        box = self.box()
-        self.preview.draw_boxes([box] if box else [])
         self._update_ok()
+        if not self._timer.isActive():
+            self._timer.start()
 
     def _pick_colour(self) -> None:
         chosen = QColorDialog.getColor(self.colour, self, "Text colour")
@@ -160,7 +197,7 @@ class PlaceDialog(QDialog):
         self._changed()
 
     def _update_ok(self) -> None:
-        ready = self.point is not None and self.box() is not None
+        ready = self.point is not None and self.box() is not None and self._fits
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(ready)
 
     def _accept(self) -> None:

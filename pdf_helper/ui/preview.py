@@ -19,6 +19,7 @@ class PagePreview(QLabel):
     """Rendered page. Clicks and drawn boxes are in page points, not pixels."""
 
     clicked = Signal(float, float)
+    dragged = Signal(float, float)  # the cursor, pulled back onto the page, while the left button is held
 
     def __init__(self):
         super().__init__(alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
@@ -72,3 +73,8 @@ class PagePreview(QLabel):
         point = self.point_on_page(event.position())
         if point is not None:
             self.clicked.emit(*point)
+
+    def mouseMoveEvent(self, event) -> None:
+        point = self.clamped_point(event.position()) if event.buttons() & Qt.MouseButton.LeftButton else None
+        if point is not None:
+            self.dragged.emit(*point)

@@ -70,8 +70,9 @@ under the log opens where the files went.
 - **Edit** – stack several changes on a page preview, each placed over the ones before, then save once as
   `<name>-edited.pdf`. The preview shows the first queued PDF; every edit applies to every queued one.
   - **Add text** – click the spot on the page, then pick the wording, font, size and colour, for a page spec or
-    every page.
-  - **Add image** – same click-to-place, with the width set in millimetres and the aspect ratio kept.
+    every page. The preview shows the text as it will print; drag it to move it.
+  - **Add image** – same click-to-place and drag-to-move, with the width set in millimetres and the aspect ratio
+    kept.
   - **Page numbers** – `1`, `1 of 10`, `Page 1` or `Page 1 of 10`, at any of six spots on the page. Numbering always
     starts at 1 on the first page.
   - **Watermark** – diagonal grey text on every page.

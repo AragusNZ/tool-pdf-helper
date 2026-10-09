@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pymupdf
-from PySide6.QtCore import QMimeData, QPointF, QUrl
+from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QMessageBox, QSpinBox
 
@@ -276,15 +276,48 @@ def test_stylesheet_leaves_controls_to_the_native_style(qapp):
 def test_place_dialog_text_mode(qapp, make_pdf):
     dialog = PlaceDialog(None, make_pdf("a.pdf", 3), "text")
     ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    bare = dialog.preview.base.toImage()
     assert not ok.isEnabled()  # nothing placed yet
     dialog.preview.clicked.emit(72.0, 144.0)
     assert not ok.isEnabled()  # a point without text is still incomplete
     dialog.text.setText("PAID")
     assert ok.isEnabled() and "25, 51 mm" in dialog.position.text()
+    assert dialog._timer.isActive()  # the redraw is coalesced, not per keystroke
+    dialog._render()
+    assert dialog.preview.base.toImage() != bare  # the text itself is on the preview, not just a box
+    assert dialog.error.text() == ""
     assert dialog.op() == {"kind": "text", "text": "PAID", "pos": [72.0, 144.0], "pages": "1", "font": "helv", "size": 24,
                            "color": [0.0, 0.0, 0.0]}
     box = dialog.box()
     assert box[0] == 72.0 and box[3] == 144.0 + 24 and box[2] > box[0]
+
+
+def test_place_dialog_drag_moves_the_text_without_a_jump(qapp, make_pdf):
+    dialog = PlaceDialog(None, make_pdf("a.pdf", 1), "text")
+    dialog.preview.clicked.emit(72.0, 144.0)
+    dialog.text.setText("PAID")
+    x0, y0 = dialog.box()[:2]
+    dialog.preview.clicked.emit(x0 + 8, y0 + 6)  # pressed inside the placed text: picked up, not re-placed
+    assert dialog.point == (72.0, 144.0)
+    dialog.preview.dragged.emit(x0 + 108, y0 + 56)
+    assert dialog.point == (172.0, 194.0)  # moved by the drag, keeping the grab offset
+    dialog.preview.dragged.emit(2.0, 1.0)  # dragged off the top-left: the text stays on the page
+    assert dialog.point == (0.0, 0.0)
+    dialog.preview.clicked.emit(300.0, 400.0)  # a press away from the text places it there
+    assert dialog.point == (300.0, 400.0)
+
+
+def test_place_dialog_says_when_the_text_does_not_fit(qapp, make_pdf):
+    dialog = PlaceDialog(None, make_pdf("a.pdf", 1), "text")
+    dialog.preview.clicked.emit(560.0, 770.0)  # bottom-right corner of a 612 x 792 page
+    dialog.text.setText("far too long for the corner")
+    dialog.size.setValue(60)
+    dialog._render()
+    ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert "does not fit" in dialog.error.text() and not ok.isEnabled()
+    dialog.preview.clicked.emit(20.0, 20.0)
+    dialog._render()
+    assert dialog.error.text() == "" and ok.isEnabled()
 
 
 def test_place_dialog_rejects_bad_page_spec(qapp, make_pdf):
@@ -312,8 +345,11 @@ def test_place_dialog_image_mode_keeps_aspect(qapp, make_pdf, make_png, monkeypa
         staticmethod(lambda parent, title, start, filt: opened_at.append(start) or (str(png), "")),
     )
     dialog.preview.clicked.emit(20.0, 30.0)
+    bare = dialog.preview.base.toImage()
     dialog._pick_image()
     assert opened_at == [str(tmp_path / "pictures")]  # Browse opens where asked, not beside the previewed file
+    dialog._render()
+    assert dialog.preview.base.toImage() != bare  # the picture is drawn on the preview
     op = dialog.op()
     width = 50 * MM
     assert op["kind"] == "image" and op["image"] == str(png) and op["pages"] == "1"
@@ -359,13 +395,32 @@ def test_place_dialog_colour_picker(qapp, make_pdf, monkeypatch):
 
 
 class _ClickEvent:
-    """Stand-in for QMouseEvent: only position() is read."""
+    """Stand-in for QMouseEvent: only position() and buttons() are read."""
 
-    def __init__(self, x: float, y: float):
+    def __init__(self, x: float, y: float, held: bool = True):
         self._p = QPointF(x, y)
+        self._held = held
 
     def position(self) -> QPointF:
         return self._p
+
+    def buttons(self):
+        return Qt.MouseButton.LeftButton if self._held else Qt.MouseButton.NoButton
+
+
+def test_preview_drag_reports_the_point_pulled_onto_the_page(qapp, make_pdf):
+    seen: list[tuple[float, float]] = []
+    preview = PagePreview()
+    preview.dragged.connect(lambda x, y: seen.append((x, y)))
+    preview.mouseMoveEvent(_ClickEvent(5, 5))  # no page loaded
+    png, width, _ = render_page_png(make_pdf("a.pdf", 1), 0, max_px=200)
+    preview.show_page(png, width)
+    scale = preview.base.width() / width
+    preview.mouseMoveEvent(_ClickEvent(40 * scale, 90 * scale, held=False))  # hovering is not dragging
+    assert seen == []
+    preview.mouseMoveEvent(_ClickEvent(40 * scale, 90 * scale))
+    preview.mouseMoveEvent(_ClickEvent(-30, 90 * scale))  # left the page mid-drag: pulled back to the edge
+    assert len(seen) == 2 and abs(seen[0][0] - 40) < 0.5 and seen[1][0] == 0 and abs(seen[1][1] - 90) < 0.5
 
 
 def test_preview_click_maps_pixels_to_points(qapp, make_pdf):

@@ -10,8 +10,9 @@ All notable changes to this project are documented here, in
 - Watermark, Add text, Add image, Page numbers and Replace text are now one **Edit** action: stack any number of
   them on a page preview, each placed over the ones before, and save once as `<name>-edited.pdf`. Edits can be
   reordered and removed (Delete key too); a selected text or image edit is outlined on the preview; Replace text
-  reports its hit count on the previewed file. Page numbers and Replace text each ask in one form instead of a
-  chain of prompts.
+  reports its hit count on the previewed file. Add text and Add image draw the text or image on the preview as it
+  will print, and it can be dragged into place; text that does not fit at that spot is said so. Page numbers and
+  Replace text each ask in one form instead of a chain of prompts.
 
 ### Added
 

@@ -76,26 +76,42 @@ def add_text(
     """
     with open_pdf(src) as doc:
         for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
-            page = doc[i]
-            box = pymupdf.Rect(pos[0], pos[1], page.rect.x1, page.rect.y1)
-            if box.is_empty or box.is_infinite:
-                raise ValueError(f"position {pos} is outside page {i + 1}")
-            box *= page.derotation_matrix
-            if page.insert_textbox(box, text, fontname=fontname, fontsize=size, color=color, rotate=page.rotation) < 0:
-                raise ValueError(f"text does not fit on page {i + 1} at that position and size")
+            stamp_text(doc[i], text, pos, fontname=fontname, size=size, color=color)
         doc.save(out)
+
+
+def stamp_text(
+    page: pymupdf.Page,
+    text: str,
+    pos: tuple[float, float],
+    *,
+    fontname: str = "helv",
+    size: float = 12,
+    color: tuple[float, float, float] = (0, 0, 0),
+) -> None:
+    """``add_text`` for one page, in memory: the placement preview draws with this and never saves."""
+    box = pymupdf.Rect(pos[0], pos[1], page.rect.x1, page.rect.y1)
+    if box.is_empty or box.is_infinite:
+        raise ValueError(f"position {pos} is outside page {page.number + 1}")
+    box *= page.derotation_matrix
+    if page.insert_textbox(box, text, fontname=fontname, fontsize=size, color=color, rotate=page.rotation) < 0:
+        raise ValueError(f"text does not fit on page {page.number + 1} at that position and size")
 
 
 def add_image(src: Path, out: Path, image: Path, rect: tuple[float, float, float, float], pages: list[int] | None = None) -> None:
     """Place ``image`` inside ``rect`` (displayed page points) on ``pages`` (0-based; None = all), aspect preserved."""
+    with open_pdf(src) as doc:
+        for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
+            stamp_image(doc[i], image, rect)
+        doc.save(out)
+
+
+def stamp_image(page: pymupdf.Page, image: Path, rect: tuple[float, float, float, float]) -> None:
+    """``add_image`` for one page, in memory."""
     target = pymupdf.Rect(*rect)
     if target.is_empty or target.is_infinite:
         raise ValueError(f"image rectangle {rect} is empty")
-    with open_pdf(src) as doc:
-        for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
-            page = doc[i]
-            page.insert_image(target * page.derotation_matrix, filename=str(image), keep_proportion=True, rotate=page.rotation)
-        doc.save(out)
+    page.insert_image(target * page.derotation_matrix, filename=str(image), keep_proportion=True, rotate=page.rotation)
 
 
 def image_size(image: Path) -> tuple[int, int]:

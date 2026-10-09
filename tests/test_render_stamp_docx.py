@@ -64,6 +64,14 @@ def test_to_docx(make_pdf, tmp_path: Path):
     assert "word/document.xml" in zipfile.ZipFile(out).namelist()
 
 
+def test_render_page_png_with_a_stamp_shows_it_and_saves_nothing(make_pdf):
+    src = make_pdf("s.pdf", 1)
+    before = src.read_bytes()
+    plain, *_ = render_page_png(src, 0, max_px=200)
+    stamped, *_ = render_page_png(src, 0, max_px=200, stamp=lambda page: page.insert_text((72, 300), "PREVIEW"))
+    assert stamped != plain and src.read_bytes() == before
+
+
 def test_render_page_png(make_pdf):
     png, width, height = render_page_png(make_pdf("p.pdf", 2), 1, max_px=200)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
