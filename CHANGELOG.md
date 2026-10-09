@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-09
+
 ### Fixed
 
 - Footnotes: the leader line now runs from the nearest point of the highlight to its margin number, and no
