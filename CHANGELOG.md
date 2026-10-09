@@ -5,6 +5,18 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Changed
+
+- Picking an action no longer starts it. The action stays selected and a **Run** button under the tabs starts it,
+  named after the action ("Run Compress").
+- Run says how it ended on the line beside the button: green "done" with the number of outputs written, red
+  "failed" with the reason, or "cancelled". The log no longer ends in "done" after a failed run.
+- Actions that write one file per source now ask for the output name. With one file queued it is a Save dialog,
+  prefilled with the old automatic name. With several it asks for a folder, then the text added to each file name
+  (`-small`, `-stamped` and so on, editable). Applies to PDF to Word, Watermark, Add text, Add image, Page numbers,
+  Replace text, Redact, Footnote comments, Compress, Grayscale, N-up, Resize pages, Password protect, Unlock and
+  Edit info.
+
 ## [1.3.2] - 2026-10-09
 
 ## [1.3.1] - 2026-10-09

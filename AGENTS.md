@@ -16,7 +16,7 @@ Both are generated from one source; edit `~/dev/ai-agents`, never the delivered 
 
 ## What this is
 
-A Windows desktop tool for everyday PDF jobs: files go into a queue, a button acts on all of them.
+A Windows desktop tool for everyday PDF jobs: files go into a queue, you pick an action, **Run** acts on all of them.
 PySide6 for the window, PyMuPDF for everything that touches a PDF. Distributed as a PyInstaller onedir
 build wrapped in an Inno Setup installer, cut by the `release` workflow on a `v*` tag.
 
@@ -56,6 +56,11 @@ and never bump it — a bump is the operator's `dt patch`.
 2. Append it to `FEATURES` in `pdf_helper/features/__init__.py` — that list is the button order, and
    the first appearance of each `group` is the tab order. Keep a group's features together.
 3. Reusable PDF logic goes in `pdf_helper/core/`, with a test under `tests/`.
+
+A feature that writes one file per source asks where with `ask_output` in `ui/dialogs.py`: a Save dialog for
+one queued file, a folder plus a name suffix for several. It returns a `Namer` (source → output path, built on
+`fresh`) that `run` calls on the worker. Features that write numbered parts or a folder per source keep
+`choose_directory`.
 
 `ask_page_spec` in `ui/dialogs.py` is the "1-3,5" prompt: it re-asks until the spec parses, and
 returns `[]` for a blank one when `allow_blank` is set.

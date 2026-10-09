@@ -16,12 +16,15 @@ from pdf_helper.app import MainWindow
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.convert import IMAGE_SIZE
 from pdf_helper.features import create_pdf, merge, redact, split, to_images, watermark
+from tests.conftest import fake_ask_output
 
 
 def _run(window: MainWindow, label: str, qapp) -> str:
     feature, button = next(pair for pair in window.feature_buttons if pair[0].label == label)
     assert button.isEnabled(), f"{label} not enabled for the queue"
     button.click()
+    assert window._worker is None and window.run_button.text() == f"Run {label}"  # picking an action runs nothing
+    window.run_button.click()
     worker = window._worker
     assert worker is not None and worker.wait(30000)
     qapp.processEvents()
@@ -45,7 +48,7 @@ def test_watermark_pipeline_whole_queue(qapp, make_pdf, tmp_path: Path, monkeypa
     out_dir = tmp_path / "stamped"
     out_dir.mkdir()
     monkeypatch.setattr(watermark, "ask_text", lambda *a: "DRAFT")
-    monkeypatch.setattr(watermark, "choose_directory", lambda *a: out_dir)
+    monkeypatch.setattr(watermark, "ask_output", fake_ask_output(out_dir))
     w = MainWindow()
     w.queue.add_paths([make_pdf("a.pdf", 1), make_pdf("b.pdf", 2)])
 
@@ -174,7 +177,7 @@ def test_redact_pipeline(qapp, make_pdf, tmp_path: Path, monkeypatch):
             return ({0: [(60.0, 60.0, 200.0, 80.0)]}, "page 2", False)
 
     monkeypatch.setattr(redact, "RedactDialog", _Dialog)
-    monkeypatch.setattr(redact, "choose_directory", lambda *a: out_dir)
+    monkeypatch.setattr(redact, "ask_output", fake_ask_output(out_dir))
     w = MainWindow()
     w.queue.add_paths([make_pdf("a.pdf", 2), make_pdf("b.pdf", 1)])
 

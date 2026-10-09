@@ -3,18 +3,17 @@
 from pathlib import Path
 
 from pdf_helper.core.docx import to_docx
-from pdf_helper.core.paths import fresh
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_output
 
 
-def prepare(ctx: FeatureContext) -> Path | None:
-    return choose_directory(ctx.parent, ctx.files[0].parent)
+def prepare(ctx: FeatureContext) -> Namer | None:
+    return ask_output(ctx.parent, ctx.files, "", ".docx")
 
 
-def run(ctx: FeatureContext, out_dir: Path) -> None:
+def run(ctx: FeatureContext, name: Namer) -> None:
     def one(src: Path) -> Path:
-        out = fresh(out_dir / f"{src.stem}.docx")
+        out = name(src)
         to_docx(src, out)
         ctx.log(f"{src.name} -> {out}")
         return out

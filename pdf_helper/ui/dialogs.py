@@ -7,14 +7,33 @@ from PySide6.QtWidgets import (
 )
 
 from pdf_helper.core.pages import parse_page_spec
+from pdf_helper.core.paths import fresh
 
 
-def save_pdf_path(parent: QWidget | None, suggested: Path) -> Path | None:
-    name, _ = QFileDialog.getSaveFileName(parent, "Save PDF", str(suggested), "PDF (*.pdf)")
+def save_pdf_path(parent: QWidget | None, suggested: Path, ext: str = ".pdf") -> Path | None:
+    kind = ext[1:].upper()
+    name, _ = QFileDialog.getSaveFileName(parent, f"Save {kind}", str(suggested), f"{kind} (*{ext})")
     if not name:
         return None
     path = Path(name)
-    return path if path.suffix.lower() == ".pdf" else path.with_suffix(".pdf")
+    return path if path.suffix.lower() == ext else path.with_suffix(ext)
+
+
+Namer = Callable[[Path], Path]  # source file -> where its output goes
+
+
+def ask_output(parent: QWidget | None, files: list[Path], suffix: str, ext: str = ".pdf") -> Namer | None:
+    """Where a run writes. One file: a Save dialog. Several: a folder, then a suffix added to each source name.
+
+    Returns source -> output path (no Qt inside, safe on the worker), or None when cancelled."""
+    if len(files) == 1:
+        out = save_pdf_path(parent, files[0].with_name(f"{files[0].stem}{suffix}{ext}"), ext)
+        return None if out is None else lambda src: out
+    out_dir = choose_directory(parent, files[0].parent)
+    if out_dir is None:
+        return None
+    added = ask_text(parent, "Output names", f"Added to each file name, e.g. {files[0].stem}{suffix}{ext}:", suffix)
+    return None if added is None else lambda src: fresh(out_dir / f"{src.stem}{added}{ext}")
 
 
 def open_file_paths(parent: QWidget | None, exts: frozenset[str], start: str = "") -> list[Path]:
@@ -23,8 +42,8 @@ def open_file_paths(parent: QWidget | None, exts: frozenset[str], start: str = "
     return [Path(n) for n in names]
 
 
-def ask_text(parent: QWidget | None, title: str, prompt: str) -> str | None:
-    text, ok = QInputDialog.getText(parent, title, prompt)
+def ask_text(parent: QWidget | None, title: str, prompt: str, default: str = "") -> str | None:
+    text, ok = QInputDialog.getText(parent, title, prompt, QLineEdit.EchoMode.Normal, default)
     return text if ok else None
 
 

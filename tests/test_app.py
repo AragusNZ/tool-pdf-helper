@@ -71,6 +71,72 @@ def test_feature_runs_on_worker_and_logs(qapp, make_pdf):
     assert w._worker is None and button.isEnabled()
 
 
+
+def test_run_starts_only_the_selected_action(qapp, make_pdf):
+    ran: list[str] = []
+    a = Feature(label="A", run=lambda ctx, p: ran.append("A"))
+    b = Feature(label="B", run=lambda ctx, p: ran.append("B"), min_files=2)
+    w = _window(qapp, [a, b])
+    assert not w.run_button.isEnabled() and w.run_button.text() == "Run"  # nothing picked yet
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    assert not w.run_button.isEnabled()
+    w.feature_buttons[0][1].click()
+    assert w._worker is None and ran == []  # picking runs nothing
+    assert w.run_button.isEnabled() and w.run_button.text() == "Run A"
+    w.run_button.click()
+    assert not w.run_button.isEnabled()  # busy
+    _wait(w, qapp)
+    assert ran == ["A"] and w.run_button.isEnabled()
+    assert w.notice.text() == "A done" and w.notice.foregroundRole() == app_module.QPalette.ColorRole.Link
+
+
+def test_run_waits_for_files_that_suit_the_action(qapp, make_pdf):
+    b = Feature(label="B", run=lambda ctx, p: None, min_files=2)
+    w = _window(qapp, [b])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w.feature_buttons[0][1].setEnabled(True)  # still selectable in principle; Run is the gate
+    w.feature_buttons[0][1].click()
+    assert not w.run_button.isEnabled() and "do not suit" in w.run_button.toolTip()
+    w.queue.add_paths([make_pdf("b.pdf", 1)])
+    assert w.run_button.isEnabled()
+
+
+def test_notice_counts_outputs(qapp, make_pdf, tmp_path: Path):
+    feat = Feature(label="T", run=lambda ctx, p: ctx.outputs.extend([tmp_path / "x.pdf", tmp_path / "y.pdf"]))
+    w = _window(qapp, [feat])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(feat)
+    _wait(w, qapp)
+    assert w.notice.text() == "T done - 2 output(s) written"
+
+
+def test_notice_reports_a_failed_run(qapp, make_pdf):
+    def run(ctx, params):
+        raise RuntimeError("1 of 3 file(s) failed")
+
+    feat = Feature(label="T", run=run)
+    w = _window(qapp, [feat])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(feat)
+    _wait(w, qapp)
+    assert w.notice.text() == "T failed: 1 of 3 file(s) failed - see the log"
+    assert w.notice.foregroundRole() == app_module.QPalette.ColorRole.BrightText
+    assert not w.log_view.toPlainText().rstrip().endswith("done")
+
+
+def test_notice_reports_prepare_cancel_and_error(qapp, make_pdf):
+    def boom(ctx):
+        raise ValueError("cannot open")
+
+    cancel = Feature(label="C", prepare=lambda ctx: None, run=lambda ctx, p: None)
+    broken = Feature(label="B", prepare=boom, run=lambda ctx, p: None)
+    w = _window(qapp, [cancel, broken])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(cancel)
+    assert w.notice.text() == "C cancelled"
+    w._run_feature(broken)
+    assert w.notice.text() == "B failed: cannot open"
+
 def test_feature_cancelled_in_prepare(qapp, make_pdf):
     feat = Feature(label="T", prepare=lambda ctx: None, run=lambda ctx, p: None)
     w = _window(qapp, [feat])
@@ -294,6 +360,7 @@ def test_cancel_stops_between_files(qapp, tmp_path: Path):
     assert w.cancel_button.isHidden()
     text = w.log_view.toPlainText()
     assert seen == ["a.txt"] and "cancelled: 1 of 3 file(s) done" in text
+    assert w.notice.text() == "T cancelled - 1 output(s) written"
     assert w.progress.maximum() == 3 and w.progress.value() == 1 and w.progress.text() == "1 of 3"
 
 

@@ -2,28 +2,27 @@
 
 from pathlib import Path
 
-from pdf_helper.core.paths import fresh
 from pdf_helper.core.stamp import NUMBER_FORMATS, NUMBER_POSITIONS, page_numbers
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import ask_choice, choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_choice, ask_output
 
 
-def prepare(ctx: FeatureContext) -> tuple[str, str, Path] | None:
+def prepare(ctx: FeatureContext) -> tuple[str, str, Namer] | None:
     shown = ask_choice(ctx.parent, "Page numbers", "Show:", list(NUMBER_FORMATS))
     if shown is None:
         return None
     position = ask_choice(ctx.parent, "Page numbers", "Position:", list(NUMBER_POSITIONS))
     if position is None:
         return None
-    out_dir = choose_directory(ctx.parent, ctx.files[0].parent)
-    return (NUMBER_FORMATS[shown], position, out_dir) if out_dir else None
+    name = ask_output(ctx.parent, ctx.files, "-numbered")
+    return (NUMBER_FORMATS[shown], position, name) if name else None
 
 
-def run(ctx: FeatureContext, params: tuple[str, str, Path]) -> None:
-    fmt, position, out_dir = params
+def run(ctx: FeatureContext, params: tuple[str, str, Namer]) -> None:
+    fmt, position, name = params
 
     def one(src: Path) -> Path:
-        out = fresh(out_dir / f"{src.stem}-numbered.pdf")
+        out = name(src)
         page_numbers(src, out, fmt=fmt, position=position)
         ctx.log(f"{src.name}: numbered -> {out}")
         return out

@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-from pdf_helper.core.paths import fresh
 from pdf_helper.core.pdf import metadata, set_metadata
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import ask_fields, choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_fields, ask_output
 
 FIELDS = {"Title": "title", "Author": "author", "Subject": "subject", "Keywords": "keywords"}
 
@@ -21,15 +20,15 @@ def prepare(ctx: FeatureContext) -> tuple[dict[str, str], Path] | None:
     if not fields:
         ctx.log("Edit info: nothing entered")
         return None
-    out_dir = choose_directory(ctx.parent, ctx.files[0].parent)
-    return (fields, out_dir) if out_dir else None
+    name = ask_output(ctx.parent, ctx.files, "-info")
+    return (fields, name) if name else None
 
 
 def run(ctx: FeatureContext, params: tuple[dict[str, str], Path]) -> None:
-    fields, out_dir = params
+    fields, name = params
 
     def one(src: Path) -> Path:
-        out = fresh(out_dir / f"{src.stem}-info.pdf")
+        out = name(src)
         set_metadata(src, out, fields)
         ctx.log(f"{src.name}: {', '.join(fields)} set -> {out}")
         return out

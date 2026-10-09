@@ -12,8 +12,8 @@ from PySide6.QtGui import (
     QPalette, QShortcut,
 )
 from PySide6.QtWidgets import (
-    QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
-    QPushButton, QStyleFactory, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QButtonGroup, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit,
+    QProgressBar, QPushButton, QStyleFactory, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from pdf_helper import __version__
@@ -46,6 +46,9 @@ class MainWindow(QMainWindow):
         self._worker: Worker | None = None
         self._output_dir: Path | None = None
         self._update_worker: Worker | None = None
+        self._feature: Feature | None = None  # the running (or last) job, for the notice
+        self._error: str | None = None
+        self._cancelled = False  # Qt clears isInterruptionRequested once the thread ends, so remember it here
 
         self.queue = FileQueue()
         self.queue.changed.connect(self._refresh_buttons)
@@ -58,6 +61,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
         layout.addWidget(self._files_group(), stretch=3)
         layout.addWidget(self._actions_tabs())
+        layout.addLayout(self._run_row())
         layout.addWidget(self._log_group(), stretch=2)
         root = QWidget()
         root.setLayout(layout)
@@ -101,6 +105,7 @@ class MainWindow(QMainWindow):
     def _actions_tabs(self) -> QTabWidget:
         """One tab per feature group, in the order the registry first names it."""
         self.feature_buttons: list[tuple[Feature, QPushButton]] = []
+        self.action_group = QButtonGroup(self)  # exclusive: one action selected, Run starts it
         groups: dict[str, list[Feature]] = {}
         for feature in FEATURES:
             groups.setdefault(feature.group, []).append(feature)
@@ -111,7 +116,8 @@ class MainWindow(QMainWindow):
             for i, feature in enumerate(features):
                 b = QPushButton(feature.label)
                 b.setToolTip(feature.tooltip)
-                b.clicked.connect(partial(self._run_feature, feature))
+                b.setCheckable(True)
+                self.action_group.addButton(b)
                 grid.addWidget(b, i // GRID_COLUMNS, i % GRID_COLUMNS)
                 self.feature_buttons.append((feature, b))
             for column in range(GRID_COLUMNS):
@@ -119,7 +125,22 @@ class MainWindow(QMainWindow):
             page = QWidget()
             page.setLayout(grid)
             self.tabs.addTab(page, name)
+        self.action_group.buttonClicked.connect(self._refresh_buttons)
         return self.tabs
+
+    def _run_row(self) -> QHBoxLayout:
+        """The selected action's Run button, and what the last run came to."""
+        self.notice = QLabel(wordWrap=True)
+        self.run_button = QPushButton("Run", default=True)
+        self.run_button.setMinimumWidth(160)
+        bold = self.run_button.font()
+        bold.setBold(True)  # the primary button on every style, not only where :default is drawn as accent
+        self.run_button.setFont(bold)
+        self.run_button.clicked.connect(self._run_selected)
+        row = QHBoxLayout()
+        row.addWidget(self.notice, stretch=1)
+        row.addWidget(self.run_button)
+        return row
 
     def _log_group(self) -> QGroupBox:
         self.open_output = QPushButton("Open output folder", enabled=False)
@@ -204,11 +225,33 @@ class MainWindow(QMainWindow):
         busy = self._worker is not None
         for feature, button in self.feature_buttons:
             button.setEnabled(not busy and feature.enabled_for(files))
+        selected = self._selected()
+        self.run_button.setText(f"Run {selected.label}" if selected else "Run")
+        self.run_button.setEnabled(not busy and selected is not None and selected.enabled_for(files))
+        if selected is None:
+            self.run_button.setToolTip("Pick an action above first")
+        elif not selected.enabled_for(files):
+            self.run_button.setToolTip("The queued files do not suit this action")
+        else:
+            self.run_button.setToolTip(selected.tooltip)
         self.statusBar().showMessage("Working..." if busy else f"{len(files)} file(s) queued")
 
     # --- features ----------------------------------------------------------
+    def _selected(self) -> Feature | None:
+        return next((f for f, b in self.feature_buttons if b.isChecked()), None)
+
+    def _run_selected(self) -> None:
+        if (feature := self._selected()) is not None:
+            self._run_feature(feature)
+
+    def _set_notice(self, text: str, role: QPalette.ColorRole = QPalette.ColorRole.WindowText) -> None:
+        self.notice.setText(text)
+        self.notice.setForegroundRole(role)
+
     def _run_feature(self, feature: Feature) -> None:
         ctx = FeatureContext(files=self.queue.paths(), log=self.log, parent=self)
+        self._feature, self._error, self._cancelled = feature, None, False
+        self._set_notice("")
         self._output_dir = None  # a job that writes nothing must not reopen the previous job's folder
         params = None
         if feature.prepare is not None:
@@ -217,9 +260,11 @@ class MainWindow(QMainWindow):
             except Exception as exc:  # noqa: BLE001 - prepare opens the file; it may be corrupt or gone
                 log.exception("%s prepare failed", feature.label)
                 self.log(f"ERROR: {feature.label}: {exc or type(exc).__name__}")
+                self._set_notice(f"{feature.label} failed: {exc or type(exc).__name__}", QPalette.ColorRole.BrightText)
                 return
             if params is None:
                 self.log(f"{feature.label}: cancelled")
+                self._set_notice(f"{feature.label} cancelled")
                 return
         self.log(f"--- {feature.label} ---")
         # Worker thread must not touch widgets: log via a queued signal, drop the parent widget.
@@ -245,13 +290,22 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_failed(self, message: str) -> None:
         self.log(f"ERROR: {message} (details: {LOG_FILE})")
+        self._error = message
 
     @Slot()
     def _on_finished(self) -> None:
         QApplication.restoreOverrideCursor()
         self.progress.hide()
         self.cancel_button.hide()
-        self.log("done")
+        label = self._feature.label
+        written = f" - {len(self._ctx.outputs)} output(s) written" if self._ctx.outputs else ""
+        if self._error is not None:
+            self._set_notice(f"{label} failed: {self._error} - see the log", QPalette.ColorRole.BrightText)
+        elif self._cancelled:
+            self._set_notice(f"{label} cancelled{written}")
+        else:
+            self.log("done")
+            self._set_notice(f"{label} done{written}", QPalette.ColorRole.Link)
         if self._ctx.outputs:
             # ponytail: first output's folder only; Create PDF(s) across several source folders opens one of them.
             first = self._ctx.outputs[0]
@@ -272,6 +326,7 @@ class MainWindow(QMainWindow):
     def _cancel(self) -> None:
         if self._worker is not None:
             self._worker.requestInterruption()
+            self._cancelled = True
             self.cancel_button.setEnabled(False)
             self.log("cancelling after the current file...")
 

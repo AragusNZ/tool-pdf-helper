@@ -34,6 +34,7 @@ LIGHT = {
     R.Highlight: "#005FB8",  # default accent, Dark1
     R.HighlightedText: "#FFFFFF",
     R.BrightText: "#C42B1C",  # SystemFillColorCritical - the log's error colour
+    R.Link: "#0F7B0F",  # SystemFillColorSuccess - the run notice's success colour
     "disabled": "#A0A0A0",  # TextFillColorDisabled
 }
 DARK = {
@@ -51,6 +52,7 @@ DARK = {
     R.Highlight: "#60CDFF",  # default accent, Light2
     R.HighlightedText: "#000000",
     R.BrightText: "#FF99A4",
+    R.Link: "#6CCB5F",
     "disabled": "#787878",
 }
 
@@ -85,6 +87,8 @@ QPushButton {
 QPushButton:hover:enabled { background: palette(midlight); border-color: palette(highlight); }
 QPushButton:pressed:enabled { background: palette(dark); }
 QPushButton:disabled { border-color: palette(midlight); }
+QPushButton:checked { border: 2px solid palette(highlight); background: palette(midlight); }
+QPushButton:default:enabled { background: palette(highlight); color: palette(highlighted-text); border-color: palette(highlight); }
 QListWidget, QPlainTextEdit {
     background: palette(base);
     border: 1px solid palette(mid);

@@ -5,7 +5,7 @@ from pathlib import Path
 from pdf_helper.core.notes import NotesOptions, footnote_comments
 from pdf_helper.core.paths import fresh
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import ask_options, choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_options, ask_output
 
 PLACEMENT = {"After each page": "after", "At the end": "end", "Notes only, no source pages": "only"}
 MARKER = {"Right margin": "right", "Left margin": "left", "After the phrase": "inline", "On the highlight, top left": "start"}
@@ -34,12 +34,12 @@ def _rgb(hex_color: str) -> tuple[float, float, float]:
     return r, g, b
 
 
-def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
+def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Namer] | None:
     answers = ask_options(ctx.parent, "Footnote comments", FIELDS)
     if answers is None:
         return None
-    out_dir = choose_directory(ctx.parent, ctx.files[0].parent)
-    if not out_dir:
+    name = ask_output(ctx.parent, ctx.files, "-notes")
+    if not name:
         return None
     opts = NotesOptions(
         quote=answers["Each note holds"] != "Comment only",
@@ -55,15 +55,15 @@ def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
         mark_color=_rgb(str(answers["Number colour"])),
         disc=_rgb(str(answers["Disc colour"])) if answers["Number in a disc"] else None,
     )
-    return opts, out_dir
+    return opts, name
 
 
-def run(ctx: FeatureContext, params: tuple[NotesOptions, Path]) -> None:
-    opts, out_dir = params
+def run(ctx: FeatureContext, params: tuple[NotesOptions, Namer]) -> None:
+    opts, name = params
 
     def one(src: Path) -> Path | list[Path]:
-        out = fresh(out_dir / f"{src.stem}-notes.pdf")
-        md = fresh(out_dir / f"{src.stem}-notes.md") if opts.export else None
+        out = name(src)
+        md = fresh(out.with_suffix(".md")) if opts.export else None
         n = footnote_comments(src, out, opts, md=md)
         ctx.log(f"{src.name}: {n} note(s) -> {out}" + (f" and {md.name}" if md else ""))
         return [out, md] if md else out

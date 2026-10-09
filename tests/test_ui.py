@@ -143,6 +143,58 @@ def test_save_pdf_path_adds_suffix(qapp, monkeypatch, tmp_path: Path):
     assert dialogs.save_pdf_path(None, tmp_path / "x.pdf") is None
 
 
+
+def test_save_path_for_another_type(qapp, monkeypatch, tmp_path: Path):
+    seen = {}
+
+    def fake(parent, title, start, filt):
+        seen["title"], seen["start"], seen["filter"] = title, start, filt
+        return (str(tmp_path / "out"), "")
+
+    monkeypatch.setattr(dialogs.QFileDialog, "getSaveFileName", staticmethod(fake))
+    assert dialogs.save_pdf_path(None, tmp_path / "x.docx", ".docx") == tmp_path / "out.docx"
+    assert seen == {"title": "Save DOCX", "start": str(tmp_path / "x.docx"), "filter": "DOCX (*.docx)"}
+
+
+def test_ask_output_one_file_is_a_save_dialog(qapp, monkeypatch, tmp_path: Path):
+    src = tmp_path / "report.pdf"
+    starts: list[str] = []
+    answer = [str(tmp_path / "Final")]
+    monkeypatch.setattr(
+        dialogs.QFileDialog, "getSaveFileName", staticmethod(lambda p, t, start, f: (starts.append(start), (answer[0], ""))[1])
+    )
+    name = dialogs.ask_output(None, [src], "-small")
+    assert starts == [str(tmp_path / "report-small.pdf")]  # the old automatic name is the suggestion
+    assert name(src) == tmp_path / "Final.pdf"
+    answer[0] = ""
+    assert dialogs.ask_output(None, [src], "-small") is None
+
+
+def test_ask_output_batch_is_folder_then_suffix(qapp, monkeypatch, tmp_path: Path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a-v2.pdf").write_bytes(b"")  # taken: numbered, never overwritten
+    defaults: list[str] = []
+
+    def get_text(parent, title, prompt, mode, default):
+        defaults.append(default)
+        return ("-v2", True)
+
+    monkeypatch.setattr(dialogs.QFileDialog, "getExistingDirectory", staticmethod(lambda *a: str(out)))
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(get_text))
+    name = dialogs.ask_output(None, [tmp_path / "a.pdf", tmp_path / "b.pdf"], "-small")
+    assert defaults == ["-small"]
+    assert name(tmp_path / "a.pdf") == out / "a-v2 (2).pdf" and name(tmp_path / "b.pdf") == out / "b-v2.pdf"
+
+
+def test_ask_output_batch_cancelled_at_either_step(qapp, monkeypatch, tmp_path: Path):
+    files = [tmp_path / "a.pdf", tmp_path / "b.pdf"]
+    monkeypatch.setattr(dialogs.QFileDialog, "getExistingDirectory", staticmethod(lambda *a: ""))
+    assert dialogs.ask_output(None, files, "-x") is None
+    monkeypatch.setattr(dialogs.QFileDialog, "getExistingDirectory", staticmethod(lambda *a: str(tmp_path)))
+    monkeypatch.setattr(dialogs.QInputDialog, "getText", staticmethod(lambda *a: ("", False)))
+    assert dialogs.ask_output(None, files, "-x") is None
+
 def test_open_file_paths(qapp, monkeypatch):
     captured = {}
 

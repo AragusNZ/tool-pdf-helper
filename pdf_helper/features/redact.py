@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-from pdf_helper.core.paths import fresh
 from pdf_helper.core.replace import redact
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_output
 from pdf_helper.ui.redact_dialog import RedactDialog
 
 
@@ -13,15 +12,15 @@ def prepare(ctx: FeatureContext) -> tuple | None:
     dialog = RedactDialog(ctx.parent, ctx.files[0])
     if not dialog.exec():
         return None
-    out_dir = choose_directory(ctx.parent, ctx.files[0].parent)
-    return (*dialog.params(), out_dir) if out_dir else None
+    name = ask_output(ctx.parent, ctx.files, "-redacted")
+    return (*dialog.params(), name) if name else None
 
 
 def run(ctx: FeatureContext, params: tuple) -> None:
-    boxes, needle, case_sensitive, out_dir = params
+    boxes, needle, case_sensitive, name = params
 
     def one(src: Path) -> Path:
-        out = fresh(out_dir / f"{src.stem}-redacted.pdf")
+        out = name(src)
         n = redact(src, out, boxes, needle, case_sensitive=case_sensitive)
         ctx.log(f"{src.name}: {n} area(s) removed -> {out}")
         return out

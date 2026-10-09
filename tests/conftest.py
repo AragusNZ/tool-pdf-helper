@@ -4,6 +4,8 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+from pdf_helper.core.paths import fresh
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -40,6 +42,16 @@ def _settings_in_tmp(tmp_path_factory):
 
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path_factory.mktemp("settings")))
+
+
+def into(folder: Path, suffix: str, ext: str = ".pdf"):
+    """The namer ``ask_output`` returns for a batch: ``folder`` / <stem><suffix><ext>, never overwriting."""
+    return lambda src: fresh(folder / f"{src.stem}{suffix}{ext}")
+
+
+def fake_ask_output(folder: Path | None):
+    """Stand-in for ``ask_output``: the batch answer, into ``folder`` with the feature's own suffix; None = cancel."""
+    return lambda parent, files, suffix, ext=".pdf": None if folder is None else into(folder, suffix, ext)
 
 
 def ink_bbox(page: pymupdf.Page) -> tuple[int, int, int, int]:

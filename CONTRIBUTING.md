@@ -63,19 +63,19 @@ A button is a `Feature`. The app knows nothing else about it — no registration
 
    from pathlib import Path
 
-   from pdf_helper.core.paths import fresh
    from pdf_helper.core.pdf import grayscale
    from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-   from pdf_helper.ui.dialogs import choose_directory
+   from pdf_helper.ui.dialogs import Namer, ask_output
 
 
-   def prepare(ctx: FeatureContext) -> Path | None:
-       return choose_directory(ctx.parent, ctx.files[0].parent)
+   def prepare(ctx: FeatureContext) -> Namer | None:
+       # one file: a Save dialog; several: a folder, then the suffix ("-grey" is the default)
+       return ask_output(ctx.parent, ctx.files, "-grey")
 
 
-   def run(ctx: FeatureContext, out_dir: Path) -> None:
+   def run(ctx: FeatureContext, name: Namer) -> None:
        def one(src: Path) -> Path:
-           out = fresh(out_dir / f"{src.stem}-grey.pdf")
+           out = name(src)  # plain function, safe on the worker
            grayscale(src, out)
            ctx.log(f"{src.name}: grey -> {out}")
            return out  # feeds "Open output folder"

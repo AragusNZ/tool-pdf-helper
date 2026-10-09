@@ -2,25 +2,24 @@
 
 from pathlib import Path
 
-from pdf_helper.core.paths import fresh
 from pdf_helper.core.pdf import unlock
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import ask_password, choose_directory
+from pdf_helper.ui.dialogs import Namer, ask_output, ask_password
 
 
-def prepare(ctx: FeatureContext) -> tuple[str, Path] | None:
+def prepare(ctx: FeatureContext) -> tuple[str, Namer] | None:
     password = ask_password(ctx.parent, "Unlock", confirm=False)
     if password is None:
         return None
-    out_dir = choose_directory(ctx.parent, ctx.files[0].parent)
-    return (password, out_dir) if out_dir else None
+    name = ask_output(ctx.parent, ctx.files, "-unlocked")
+    return (password, name) if name else None
 
 
-def run(ctx: FeatureContext, params: tuple[str, Path]) -> None:
-    password, out_dir = params  # never logged
+def run(ctx: FeatureContext, params: tuple[str, Namer]) -> None:
+    password, name = params  # never logged
 
     def one(src: Path) -> Path:
-        out = fresh(out_dir / f"{src.stem}-unlocked.pdf")
+        out = name(src)
         unlock(src, out, password)
         ctx.log(f"{src.name}: unlocked -> {out}")
         return out

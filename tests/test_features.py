@@ -15,6 +15,7 @@ from pdf_helper.features import (
 )
 from pdf_helper.features.base import FeatureContext, each_file
 from pdf_helper.ui import dialogs
+from tests.conftest import fake_ask_output, into
 
 
 @pytest.mark.parametrize("feature", [replace_text, watermark])
@@ -170,10 +171,10 @@ def test_rotate_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, choic
 def test_compress_feature(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = make_pdf("a.pdf", 2)
     monkeypatch.setattr(compress, "ask_choice", lambda *a: "Strong (100 dpi)")
-    monkeypatch.setattr(compress, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(compress, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = compress.FEATURE.prepare(ctx)
-    assert params == (100, 60, tmp_path)
+    assert params[:-1] == (100, 60,)
     compress.FEATURE.run(ctx, params)
     assert page_count(tmp_path / "a-small.pdf") == 2 and "MB ->" in log.lines[0]
 
@@ -181,7 +182,7 @@ def test_compress_feature(make_pdf, tmp_path: Path, log, monkeypatch):
 def test_compress_says_when_nothing_was_saved(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = make_pdf("a.pdf", 1)
     monkeypatch.setattr(compress, "compress", lambda src, out, **k: out.write_bytes(src.read_bytes() + b"%" * 100))
-    compress.FEATURE.run(FeatureContext([pdf], log), (100, 60, tmp_path))
+    compress.FEATURE.run(FeatureContext([pdf], log), (100, 60, into(tmp_path, "-small")))
     assert "no smaller than the original" in log.lines[-1]
 
 
@@ -189,7 +190,7 @@ def test_compress_prepare_cancel(make_pdf, log, monkeypatch):
     monkeypatch.setattr(compress, "ask_choice", lambda *a: None)
     assert compress.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
     monkeypatch.setattr(compress, "ask_choice", lambda *a: "Light (200 dpi)")
-    monkeypatch.setattr(compress, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(compress, "ask_output", fake_ask_output(None))
     assert compress.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -216,7 +217,7 @@ def test_to_images_prepare_cancel(make_pdf, log, monkeypatch):
 def test_watermark_feature(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = make_pdf("a.pdf", 1)
     monkeypatch.setattr(watermark, "ask_text", lambda *a: "DRAFT")
-    monkeypatch.setattr(watermark, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(watermark, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = watermark.FEATURE.prepare(ctx)
     watermark.FEATURE.run(ctx, params)
@@ -227,7 +228,7 @@ def test_watermark_feature(make_pdf, tmp_path: Path, log, monkeypatch):
 @pytest.mark.parametrize("text, folder", [(None, "x"), ("", "x"), ("DRAFT", None)])
 def test_watermark_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, text, folder):
     monkeypatch.setattr(watermark, "ask_text", lambda *a: text)
-    monkeypatch.setattr(watermark, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(watermark, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert watermark.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -237,10 +238,10 @@ def test_replace_text_feature(make_pdf, tmp_path: Path, log, monkeypatch):
     answers = iter(["page", "leaf"])
     monkeypatch.setattr(replace_text, "ask_text", lambda *a: next(answers))
     monkeypatch.setattr(replace_text, "ask_choice", lambda *a: "Match case")
-    monkeypatch.setattr(replace_text, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(replace_text, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = replace_text.FEATURE.prepare(ctx)
-    assert params == ("page", "leaf", True, tmp_path)
+    assert params[:-1] == ("page", "leaf", True,)
     replace_text.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-replaced.pdf") as doc:
         assert all("leaf" in p.get_text() and "page" not in p.get_text() for p in doc)
@@ -254,7 +255,7 @@ def test_replace_text_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch,
     answers = iter([old, new])
     monkeypatch.setattr(replace_text, "ask_text", lambda *a: next(answers))
     monkeypatch.setattr(replace_text, "ask_choice", lambda *a: case)
-    monkeypatch.setattr(replace_text, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(replace_text, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert replace_text.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -262,7 +263,7 @@ def test_replace_text_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch,
 def test_to_docx_feature(make_pdf, tmp_path: Path, log, monkeypatch):
     pytest.importorskip("pdf2docx")
     pdf = make_pdf("a.pdf", 1)
-    monkeypatch.setattr(to_docx, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(to_docx, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     to_docx.FEATURE.run(ctx, to_docx.FEATURE.prepare(ctx))
     assert (tmp_path / "a.docx").exists()
@@ -286,7 +287,7 @@ def test_batch_continues_after_bad_file(make_pdf, tmp_path: Path, log):
     bad = tmp_path / "bad.pdf"
     bad.write_bytes(b"not a pdf")
     with pytest.raises(RuntimeError, match="1 of 2"):
-        watermark.FEATURE.run(FeatureContext([bad, good], log), ("X", tmp_path))
+        watermark.FEATURE.run(FeatureContext([bad, good], log), ("X", into(tmp_path, "-stamped")))
     assert (tmp_path / "good-stamped.pdf").exists()
     assert log.lines[0].startswith("ERROR: bad.pdf:") and "stamped" in log.lines[1]
 
@@ -302,7 +303,7 @@ def test_create_pdf_numbers_a_taken_target(make_pdf, make_png, tmp_path: Path, l
 def test_to_docx_numbers_a_taken_target(make_pdf, tmp_path: Path, log):
     pdf = make_pdf("a.pdf", 1)
     (tmp_path / "a.docx").write_bytes(b"original")
-    to_docx.FEATURE.run(FeatureContext([pdf], log), tmp_path)
+    to_docx.FEATURE.run(FeatureContext([pdf], log), into(tmp_path, "", ".docx"))
     assert (tmp_path / "a.docx").read_bytes() == b"original"
     assert (tmp_path / "a (2).docx").exists()
 
@@ -377,10 +378,10 @@ def _fake_dialog(monkeypatch, module, accept: bool, result: tuple = ()):
 def test_add_text_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = make_pdf("a.pdf", 2)
     _fake_dialog(monkeypatch, add_text, True, ("PAID", (72.0, 144.0), "2", "helv", 30, (1, 0, 0)))
-    monkeypatch.setattr(add_text, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(add_text, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = add_text.FEATURE.prepare(ctx)
-    assert params == ("PAID", (72.0, 144.0), "2", "helv", 30, (1, 0, 0), tmp_path)
+    assert params[:-1] == ("PAID", (72.0, 144.0), "2", "helv", 30, (1, 0, 0),)
     add_text.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-text.pdf") as doc:
         assert "PAID" in doc[1].get_text() and "PAID" not in doc[0].get_text()
@@ -389,7 +390,7 @@ def test_add_text_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
 
 def test_add_text_blank_spec_is_every_page(make_pdf, tmp_path: Path, log):
     ctx = FeatureContext([make_pdf("a.pdf", 3)], log)
-    add_text.FEATURE.run(ctx, ("X", (72.0, 72.0), "", "helv", 12, (0, 0, 0), tmp_path))
+    add_text.FEATURE.run(ctx, ("X", (72.0, 72.0), "", "helv", 12, (0, 0, 0), into(tmp_path, "-text")))
     with pymupdf.open(tmp_path / "a-text.pdf") as doc:
         assert all("X" in page.get_text() for page in doc)
     assert "text on all page(s)" in log.lines[-1]
@@ -397,7 +398,7 @@ def test_add_text_blank_spec_is_every_page(make_pdf, tmp_path: Path, log):
 
 def test_add_text_spec_checked_per_file(make_pdf, tmp_path: Path, log):
     short, long = make_pdf("short.pdf", 1), make_pdf("long.pdf", 4)
-    params = ("X", (72.0, 72.0), "4", "helv", 12, (0, 0, 0), tmp_path)
+    params = ("X", (72.0, 72.0), "4", "helv", 12, (0, 0, 0), into(tmp_path, "-text"))
     with pytest.raises(RuntimeError, match="1 of 2"):
         add_text.FEATURE.run(FeatureContext([short, long], log), params)
     assert (tmp_path / "long-text.pdf").exists() and not (tmp_path / "short-text.pdf").exists()
@@ -407,10 +408,10 @@ def test_add_text_spec_checked_per_file(make_pdf, tmp_path: Path, log):
 def test_add_image_prepare_and_run(make_pdf, make_png, tmp_path: Path, log, monkeypatch):
     pdf, png = make_pdf("a.pdf", 2), make_png("pic.png", 20)
     _fake_dialog(monkeypatch, add_image, True, (png, (50.0, 50.0, 110.0, 110.0), "1"))
-    monkeypatch.setattr(add_image, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(add_image, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = add_image.FEATURE.prepare(ctx)
-    assert params == (png, (50.0, 50.0, 110.0, 110.0), "1", tmp_path)
+    assert params[:-1] == (png, (50.0, 50.0, 110.0, 110.0), "1",)
     add_image.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-image.pdf") as doc:
         assert doc[0].get_images() and not doc[1].get_images()
@@ -423,7 +424,7 @@ def test_add_image_prepare_and_run(make_pdf, make_png, tmp_path: Path, log, monk
 def test_place_prepare_cancel(make_pdf, log, monkeypatch, module, result, accepted):
     """Cancelling the dialog, or the folder chooser after it, both mean no work."""
     _fake_dialog(monkeypatch, module, accepted, result)
-    monkeypatch.setattr(module, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(module, "ask_output", fake_ask_output(None))
     assert module.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -478,10 +479,10 @@ def test_split_bookmarks_prepare_cancel(make_pdf, log, monkeypatch):
 def test_page_numbers_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     answers = iter(["Page 1 of 10", "Top right"])
     monkeypatch.setattr(page_numbers, "ask_choice", lambda *a: next(answers))
-    monkeypatch.setattr(page_numbers, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(page_numbers, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([make_pdf("a.pdf", 2)], log)
     params = page_numbers.FEATURE.prepare(ctx)
-    assert params == ("Page {n} of {total}", "Top right", tmp_path)
+    assert params[:-1] == ("Page {n} of {total}", "Top right",)
     page_numbers.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-numbered.pdf") as doc:
         assert "Page 2 of 2" in doc[1].get_text()
@@ -491,17 +492,17 @@ def test_page_numbers_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch
 def test_page_numbers_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answers, folder):
     replies = iter(answers)
     monkeypatch.setattr(page_numbers, "ask_choice", lambda *a: next(replies))
-    monkeypatch.setattr(page_numbers, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(page_numbers, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert page_numbers.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
 # --- nup / resize / grayscale -----------------------------------------------
 def test_nup_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     monkeypatch.setattr(nup, "ask_choice", lambda *a: "4 per sheet")
-    monkeypatch.setattr(nup, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(nup, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([make_pdf("a.pdf", 5)], log)
     params = nup.FEATURE.prepare(ctx)
-    assert params == (2, 2, tmp_path)
+    assert params[:-1] == (2, 2,)
     nup.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-4up.pdf") as doc:
         assert doc.page_count == 2
@@ -511,17 +512,17 @@ def test_nup_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
 @pytest.mark.parametrize("choice, folder", [(None, True), ("2 per sheet", False)])
 def test_nup_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, choice, folder):
     monkeypatch.setattr(nup, "ask_choice", lambda *a: choice)
-    monkeypatch.setattr(nup, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(nup, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert nup.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
 def test_resize_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     answers = iter(["A5", "Landscape"])
     monkeypatch.setattr(resize, "ask_choice", lambda *a: next(answers))
-    monkeypatch.setattr(resize, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(resize, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([make_pdf("a.pdf", 1)], log)
     params = resize.FEATURE.prepare(ctx)
-    assert params == ("A5", "Landscape", tmp_path)
+    assert params[:-1] == ("A5", "Landscape",)
     resize.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "a-a5.pdf") as doc:
         assert (round(doc[0].rect.width), round(doc[0].rect.height)) == (595, 420)
@@ -536,7 +537,7 @@ def test_resize_offers_only_fixed_sizes():
 def test_resize_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answers, folder):
     replies = iter(answers)
     monkeypatch.setattr(resize, "ask_choice", lambda *a: next(replies))
-    monkeypatch.setattr(resize, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(resize, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert resize.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -545,7 +546,7 @@ def test_grayscale_prepare_and_run(tmp_path: Path, log, monkeypatch):
     with pymupdf.open() as doc:
         doc.new_page().draw_rect(pymupdf.Rect(50, 50, 200, 200), color=(1, 0, 0), fill=(1, 0, 0))
         doc.save(src)
-    monkeypatch.setattr(grayscale, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(grayscale, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([src], log)
     grayscale.FEATURE.run(ctx, grayscale.FEATURE.prepare(ctx))
     with pymupdf.open(tmp_path / "c-grey.pdf") as doc:
@@ -554,7 +555,7 @@ def test_grayscale_prepare_and_run(tmp_path: Path, log, monkeypatch):
 
 
 def test_grayscale_prepare_cancel(make_pdf, log, monkeypatch):
-    monkeypatch.setattr(grayscale, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(grayscale, "ask_output", fake_ask_output(None))
     assert grayscale.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -623,13 +624,13 @@ def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     answers["Number in a disc"] = True
     answers["Disc colour"] = "#ffffff"
     monkeypatch.setattr(footnotes, "ask_options", lambda *a: answers)
-    monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(footnotes, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([pdf], log)
     params = footnotes.FEATURE.prepare(ctx)
     expected = NotesOptions(
         quote=True, placement="end", marker="left", leader=True, export=True, heading="Comments on", mark_size=12, mark_color=(0, 0, 0), disc=(1, 1, 1),
     )
-    assert params == (expected, tmp_path)
+    assert params[:-1] == (expected,)
     footnotes.FEATURE.run(ctx, params)
     assert page_count(tmp_path / "a-notes.pdf") == 2 and (tmp_path / "a-notes.md").exists()
     assert ctx.outputs == [tmp_path / "a-notes.pdf", tmp_path / "a-notes.md"]
@@ -639,7 +640,7 @@ def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
 def test_footnotes_run_without_export(make_pdf, tmp_path: Path, log):
     pdf = _highlighted(make_pdf, tmp_path / "a.pdf")
     ctx = FeatureContext([pdf], log)
-    footnotes.FEATURE.run(ctx, (NotesOptions(), tmp_path))
+    footnotes.FEATURE.run(ctx, (NotesOptions(), into(tmp_path, "-notes")))
     assert ctx.outputs == [tmp_path / "a-notes.pdf"] and log.lines[-1].endswith("a-notes.pdf")
 
 
@@ -648,7 +649,7 @@ def test_footnotes_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, an
     defaults = {k: v[0] if isinstance(v, list) else next(iter(v.values())) if isinstance(v, dict) else v
                 for k, v in footnotes.FIELDS.items()}
     monkeypatch.setattr(footnotes, "ask_options", lambda *a: defaults if answered else None)
-    monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path if folder else None)
+    monkeypatch.setattr(footnotes, "ask_output", fake_ask_output(tmp_path if folder else None))
     assert footnotes.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 def test_find_text_counts_repeats(tmp_path: Path, log):
@@ -694,10 +695,10 @@ def test_redact_prepare_and_run(tmp_path: Path, log, monkeypatch):
         page.insert_text((72, 200), "keep this")
         doc.save(src)
     _fake_redact_dialog(monkeypatch, True, ({0: [(60, 60, 200, 80)]}, "", False))
-    monkeypatch.setattr(redact, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(redact, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext([src], log)
     params = redact.FEATURE.prepare(ctx)
-    assert params == ({0: [(60, 60, 200, 80)]}, "", False, tmp_path)
+    assert params[:-1] == ({0: [(60, 60, 200, 80)]}, "", False,)
     redact.FEATURE.run(ctx, params)
     with pymupdf.open(tmp_path / "s-redacted.pdf") as doc:
         assert doc[0].get_text().split() == ["keep", "this"]
@@ -707,7 +708,7 @@ def test_redact_prepare_and_run(tmp_path: Path, log, monkeypatch):
 @pytest.mark.parametrize("accepted", [False, True])
 def test_redact_prepare_cancel(make_pdf, log, monkeypatch, accepted):
     _fake_redact_dialog(monkeypatch, accepted)
-    monkeypatch.setattr(redact, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(redact, "ask_output", fake_ask_output(None))
     assert redact.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 
@@ -744,7 +745,7 @@ def test_each_file_stops_when_cancelled(tmp_path: Path, log):
 def test_protect_then_unlock_features(make_pdf, tmp_path: Path, log, monkeypatch):
     src = make_pdf("a.pdf", 2)
     monkeypatch.setattr(protect, "ask_password", lambda *a, **k: "s3cret")
-    monkeypatch.setattr(protect, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(protect, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext(files=[src], log=log)
     protect.FEATURE.run(ctx, protect.FEATURE.prepare(ctx))
     locked = tmp_path / "a-protected.pdf"
@@ -752,7 +753,7 @@ def test_protect_then_unlock_features(make_pdf, tmp_path: Path, log, monkeypatch
     assert not any("s3cret" in line for line in log.lines)
 
     monkeypatch.setattr(unlock, "ask_password", lambda *a, **k: "s3cret")
-    monkeypatch.setattr(unlock, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(unlock, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext(files=[locked], log=log)
     unlock.FEATURE.run(ctx, unlock.FEATURE.prepare(ctx))
     assert page_count(tmp_path / "a-protected-unlocked.pdf") == 2
@@ -764,7 +765,7 @@ def test_unlock_wrong_password_is_logged_per_file(make_pdf, tmp_path: Path, log)
         doc.save(locked, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="right", owner_pw="right")
     ctx = FeatureContext(files=[locked], log=log)
     with pytest.raises(RuntimeError, match="1 of 1"):
-        unlock.FEATURE.run(ctx, ("wrong", tmp_path))
+        unlock.FEATURE.run(ctx, ("wrong", into(tmp_path, "-unlocked")))
     assert any("wrong password for l.pdf" in line for line in log.lines)
 
 
@@ -774,7 +775,7 @@ def test_password_prepare_cancel(module, make_pdf, log, monkeypatch):
     monkeypatch.setattr(module, "ask_password", lambda *a, **k: None)
     assert module.FEATURE.prepare(ctx) is None
     monkeypatch.setattr(module, "ask_password", lambda *a, **k: "pw")
-    monkeypatch.setattr(module, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(module, "ask_output", fake_ask_output(None))
     assert module.FEATURE.prepare(ctx) is None
 
 
@@ -790,7 +791,7 @@ def test_edit_info_single_file_prefills_and_sets(make_pdf, tmp_path: Path, log, 
         return {**values, "Title": "New", "Author": ""}  # blank author: leave as is
 
     monkeypatch.setattr(metadata, "ask_fields", fields)
-    monkeypatch.setattr(metadata, "choose_directory", lambda *a: tmp_path)
+    monkeypatch.setattr(metadata, "ask_output", fake_ask_output(tmp_path))
     ctx = FeatureContext(files=[src], log=log)
     metadata.FEATURE.run(ctx, metadata.FEATURE.prepare(ctx))
     assert shown["Title"] == "Old" and shown["Author"] == "Ann"
@@ -807,5 +808,5 @@ def test_edit_info_batch_starts_blank_and_cancels(make_pdf, log, monkeypatch):
     monkeypatch.setattr(metadata, "ask_fields", lambda *a: None)
     assert metadata.FEATURE.prepare(ctx) is None
     monkeypatch.setattr(metadata, "ask_fields", lambda p, t, values: {**values, "Author": "Bo"})
-    monkeypatch.setattr(metadata, "choose_directory", lambda *a: None)
+    monkeypatch.setattr(metadata, "ask_output", fake_ask_output(None))
     assert metadata.FEATURE.prepare(ctx) is None

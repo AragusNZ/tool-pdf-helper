@@ -1,6 +1,6 @@
 # PDF Helper
 
-Small Windows desktop tool for everyday PDF jobs. Drop files into the queue, press a button.
+Small Windows desktop tool for everyday PDF jobs. Drop files into the queue, pick an action, press **Run**.
 
 No account, no upload: every file is processed on your own machine. The only thing it asks the internet is
 whether a newer version is out, and nothing about your files goes with it.
@@ -29,11 +29,16 @@ Get-FileHash .\PdfHelper-<version>-setup.exe -Algorithm SHA256
 
 ## What it does
 
-Add files with **Add files...** or by dropping them on the file list, then press a button. Every button acts on the
-whole queue. The buttons sit on five tabs.
+Add files with **Add files...** or by dropping them on the file list, then pick an action and press **Run** under the
+tabs. Every action works on the whole queue. The actions sit on five tabs.
+
+**Run** asks for the action's options, then where to save. With one file queued you name the output file. With
+several you pick a folder and the text added to each file's name — `-small` turns `invoice.pdf` into
+`invoice-small.pdf`. The names below are those defaults.
 
 While a job runs, the bar at the bottom counts files done and **Cancel** stops it after the current file. When it
-finishes, **Open output folder** under the log opens where the files went.
+finishes, the line beside **Run** says whether it worked, in green, or failed, in red, and **Open output folder**
+under the log opens where the files went.
 
 ### Convert
 
@@ -104,8 +109,9 @@ finishes, **Open output folder** under the log opens where the files went.
 (doc/docx/rtf/odt, xls/xlsx/ods/csv, ppt/pptx/odp). Office documents are converted with Microsoft Office if it is
 installed, otherwise LibreOffice — one of the two must be present for those inputs, and nothing else needs it.
 
-**Nothing is ever overwritten.** The source file is refused as a target, and an output whose name is already taken
-gets ` (2)`, ` (3)` and so on appended, so a second run never replaces the first one's files.
+**Nothing is overwritten without asking.** The source file is refused as a target. An automatic name that is already taken
+gets ` (2)`, ` (3)` and so on appended, so a second run never replaces the first one's files. A name you pick in a
+Save dialog is replaced only after Windows asks you to confirm.
 
 **One bad file does not stop the batch.** The failure is logged and the rest of the queue still runs. Full
 tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); the log pane shows the path after any error.
