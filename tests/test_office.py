@@ -148,6 +148,7 @@ class _Proc:
 def fake_soffice(monkeypatch):
     monkeypatch.setattr(office, "find_libreoffice", lambda: "soffice")
     monkeypatch.setattr(subprocess, "Popen", _Proc)
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: None)  # taskkill on Windows must not spawn anything
     _Proc.started, _Proc.killed = [], []
 
     def set_outcome(outcome):
