@@ -65,20 +65,28 @@ under the log opens where the files went.
   bookmarks is reported as an error and the rest of the queue carries on.
 - **Rotate** – 90/180/270 on all pages or a page spec, single PDF.
 
-### Stamp
+### Edit
 
-- **Watermark** – diagonal grey text on every page, writes `<name>-stamped.pdf`.
-- **Add text** – click the spot on a page preview, then pick the wording, font, size and colour. Applies to a page spec or every page of every queued PDF. Writes `<name>-text.pdf`.
-- **Add image** – same click-to-place preview, with the width set in millimetres and the aspect ratio kept. Writes `<name>-image.pdf`.
-- **Page numbers** – `1`, `1 of 10`, `Page 1` or `Page 1 of 10`, at any of six spots on the page. Numbering always
-  starts at 1 on the first page. Writes `<name>-numbered.pdf`.
+- **Edit** – stack several changes on a page preview, each placed over the ones before, then save once as
+  `<name>-edited.pdf`. The preview shows the first queued PDF; every edit applies to every queued one.
+  - **Add text** – click the spot on the page, then pick the wording, font, size and colour, for a page spec or
+    every page.
+  - **Add image** – same click-to-place, with the width set in millimetres and the aspect ratio kept.
+  - **Page numbers** – `1`, `1 of 10`, `Page 1` or `Page 1 of 10`, at any of six spots on the page. Numbering always
+    starts at 1 on the first page.
+  - **Watermark** – diagonal grey text on every page.
+  - **Replace text** – find and replace a string on every page, case-insensitive by default. Replacements are drawn
+    in Helvetica (Noto Sans when the text needs more than Latin-1) at the original size and colour; longer text is
+    shrunk to fit.
+
+  **Save edits...** writes the pending list to a `.pdfedits.json` file; **Load edits...** brings it back, onto the
+  same PDF another day or onto different ones.
 
 ### Text
 
-- **Replace text** – find and replace a string on every page, case-insensitive by default. Writes `<name>-replaced.pdf`. Replacements are drawn in Helvetica (Noto Sans when the text needs more than Latin-1) at the original size and colour; longer text is shrunk to fit.
 - **Redact** – drag boxes on the page preview, and/or name a phrase to remove everywhere. Both are taken out of the
   file rather than covered over: the text is deleted from the page content and image pixels under a box go with it.
-  Boxes are dragged on the first queued PDF and applied to every queued PDF, as Add text and Add image do. Writes
+  Boxes are dragged on the first queued PDF and applied to every queued PDF, as Edit does. Writes
   `<name>-redacted.pdf`.
 - **Find text** – lists which pages of which queued PDFs hold a phrase, in the log pane. Writes nothing, and matches
   inside words the same way Replace text does.
@@ -117,7 +125,7 @@ Save dialog is replaced only after Windows asks you to confirm.
 tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); the log pane shows the path after any error.
 The log is capped at 1 MB with one previous copy kept.
 
-**Fonts for Add text.** The 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the
+**Fonts for Edit > Add text.** The 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the
 `pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). The `pymupdf-fonts`
 families are embedded in the PDF; the base-14 fonts are not, as every PDF viewer carries them.
 
@@ -131,7 +139,7 @@ controls; elsewhere it falls back to Fusion with the same colours.
 
 - Watermark, Page numbers and Replace text draw with Helvetica, and switch to Noto Sans when the text has characters
   outside Latin-1 (macrons, Greek, Cyrillic). Chinese, Japanese, Korean and Arabic are not covered; pick a font that
-  has them in Add text.
+  has them in Edit > Add text.
 - Replace text on a phrase that wraps from one line to the next draws the replacement on each line.
 - Replace text, Redact and Find text match inside words, so `cat` also hits `catalog`. A replacement wider than the
   text it replaces is drawn smaller so it still fits the original box.

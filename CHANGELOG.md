@@ -7,6 +7,21 @@ All notable changes to this project are documented here, in
 
 ### Changed
 
+- Watermark, Add text, Add image, Page numbers and Replace text are now one **Edit** action: stack any number of
+  them on a page preview, each placed over the ones before, and save once as `<name>-edited.pdf`. Page numbers and
+  Replace text each ask in one form instead of a chain of prompts.
+
+### Added
+
+- Edit > **Save edits...** / **Load edits...**: the pending edits as a small `.pdfedits.json` file, to come back to
+  later or to apply to other PDFs.
+
+### Fixed
+
+- Replace text crashed on a hit with an image under it (an image block has no text lines). The image is skipped.
+
+### Changed
+
 - Picking an action no longer starts it. The action stays selected and a **Run** button under the tabs starts it,
   named after the action ("Run Compress").
 - Run says how it ended on the line beside the button: green "done" with the number of outputs written, red

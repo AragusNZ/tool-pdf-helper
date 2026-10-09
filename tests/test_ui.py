@@ -1,15 +1,18 @@
 """Qt widgets and helpers, run offscreen."""
 
+import json
 from pathlib import Path
 
 import pymupdf
 from PySide6.QtCore import QMimeData, QPointF, QUrl
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QDialog, QDialogButtonBox
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QMessageBox, QSpinBox
 
+from pdf_helper.core.edit import EDITS_EXT
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM
 from pdf_helper.ui import dialogs, theme
+from pdf_helper.ui.edit_dialog import EditDialog
 from pdf_helper.ui.place_dialog import PlaceDialog
 from pdf_helper.ui.preview import PagePreview
 from pdf_helper.ui.redact_dialog import DragPreview, RedactDialog
@@ -278,8 +281,8 @@ def test_place_dialog_text_mode(qapp, make_pdf):
     assert not ok.isEnabled()  # a point without text is still incomplete
     dialog.text.setText("PAID")
     assert ok.isEnabled() and "25, 51 mm" in dialog.position.text()
-    text, point, spec, font, size, rgb = dialog.params()
-    assert (text, point, spec, font, size, rgb) == ("PAID", (72.0, 144.0), "1", "helv", 24, (0.0, 0.0, 0.0))
+    assert dialog.op() == {"kind": "text", "text": "PAID", "pos": [72.0, 144.0], "pages": "1", "font": "helv", "size": 24,
+                           "color": [0.0, 0.0, 0.0]}
     box = dialog.box()
     assert box[0] == 72.0 and box[3] == 144.0 + 24 and box[2] > box[0]
 
@@ -305,10 +308,10 @@ def test_place_dialog_image_mode_keeps_aspect(qapp, make_pdf, make_png, monkeypa
     monkeypatch.setattr("pdf_helper.ui.place_dialog.QFileDialog.getOpenFileName", staticmethod(lambda *a: (str(png), "")))
     dialog.preview.clicked.emit(20.0, 30.0)
     dialog._pick_image()
-    image, rect, spec = dialog.params()
+    op = dialog.op()
     width = 50 * MM
-    assert image == png and spec == "1"
-    assert rect == (20.0, 30.0, 20.0 + width, 30.0 + width / 2)
+    assert op["kind"] == "image" and op["image"] == str(png) and op["pages"] == "1"
+    assert op["rect"] == [20.0, 30.0, 20.0 + width, 30.0 + width / 2]
 
 
 def test_place_dialog_spec_follows_preview_page_until_edited(qapp, make_pdf):
@@ -343,10 +346,10 @@ def test_place_dialog_colour_picker(qapp, make_pdf, monkeypatch):
     dialog.text.setText("X")
     monkeypatch.setattr("pdf_helper.ui.place_dialog.QColorDialog.getColor", staticmethod(lambda *a: QColor("red")))
     dialog._pick_colour()
-    assert dialog.params()[5] == (1.0, 0.0, 0.0) and dialog.colour_button.text() == "#ff0000"
+    assert dialog.op()["color"] == [1.0, 0.0, 0.0] and dialog.colour_button.text() == "#ff0000"
     monkeypatch.setattr("pdf_helper.ui.place_dialog.QColorDialog.getColor", staticmethod(lambda *a: QColor()))
     dialog._pick_colour()  # invalid colour = cancelled
-    assert dialog.params()[5] == (1.0, 0.0, 0.0)
+    assert dialog.op()["color"] == [1.0, 0.0, 0.0]
 
 
 class _ClickEvent:
@@ -377,6 +380,145 @@ def test_preview_click_maps_pixels_to_points(qapp, make_pdf):
     preview.mousePressEvent(_ClickEvent(preview.base.width() + 10, 5))
     preview.mousePressEvent(_ClickEvent(5, preview.base.height() + 10))
     assert len(seen) == 1
+
+
+# --- EditDialog -------------------------------------------------------------
+TEXT = {"kind": "text", "text": "PAID", "pos": [72.0, 144.0], "pages": "", "font": "helv", "size": 30, "color": [1, 0, 0]}
+NUMBERS = {"kind": "numbers", "fmt": "Page {n}", "position": "Top left"}
+WATERMARK = {"kind": "watermark", "text": "DRAFT"}
+
+
+def _rows(dialog: EditDialog) -> list[str]:
+    return [dialog.list.item(i).text() for i in range(dialog.list.count())]
+
+
+def test_edit_dialog_stacks_edits_and_previews_them(qapp, make_pdf, monkeypatch):
+    dialog = EditDialog(None, make_pdf("a.pdf", 2))
+    ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert not ok.isEnabled() and ok.text() == "Save PDF..." and dialog.current == dialog.src
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.ask_text", lambda *a: " DRAFT ")
+    dialog._add_watermark()
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.ask_options", lambda *a: {"Show": "Page 1", "Position": "Top left"})
+    dialog._add_numbers()
+    monkeypatch.setattr(
+        "pdf_helper.ui.edit_dialog.ask_options", lambda *a: {"Find": " page ", "Replace with": "leaf", "Match case": True}
+    )
+    dialog._add_replace()
+    assert _rows(dialog) == ['Watermark "DRAFT"', "Page numbers: Page 1, Top left", 'Replace "page" with "leaf" (match case)']
+    assert ok.isEnabled() and dialog.remove.isEnabled() and dialog.current != dialog.src
+    with pymupdf.open(dialog.current) as doc:  # the preview file carries every edit
+        text = doc[1].get_text()
+        assert "DRAFT" in text and "Page 2" in text and "leaf" in text and "page" not in text
+    before = dialog.preview.base.cacheKey()
+    dialog.page_box.setValue(2)
+    assert dialog.preview.base.cacheKey() != before  # re-rendered from the composed file
+
+
+def test_edit_dialog_cancelled_prompts_add_nothing(qapp, make_pdf, monkeypatch):
+    dialog = EditDialog(None, make_pdf("a.pdf", 1))
+    for answer in (None, "   "):
+        monkeypatch.setattr("pdf_helper.ui.edit_dialog.ask_text", lambda *a, answer=answer: answer)
+        dialog._add_watermark()
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.ask_options", lambda *a: None)
+    dialog._add_numbers()
+    dialog._add_replace()
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.ask_options", lambda *a: {"Find": "  ", "Replace with": "x", "Match case": False})
+    dialog._add_replace()  # a blank Find is a cancel
+    assert dialog.ops == [] and dialog.error.text() == ""
+
+
+def test_edit_dialog_places_on_the_composed_page(qapp, make_pdf, make_png, monkeypatch):
+    png = make_png()
+    image = {"kind": "image", "image": str(png), "rect": [50.0, 50.0, 110.0, 110.0], "pages": "1"}
+    opened: list = []
+
+    class FakePlace:
+        accept = True
+
+        def __init__(self, parent, src: Path, mode: str):
+            self.src, self.mode, self.page_box = src, mode, QSpinBox(maximum=9)
+            opened.append(self)
+
+        def exec(self) -> bool:
+            return type(self).accept
+
+        def op(self) -> dict:
+            return TEXT if self.mode == "text" else image
+
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.PlaceDialog", FakePlace)
+    dialog = EditDialog(None, make_pdf("a.pdf", 2))
+    dialog.page_box.setValue(2)
+    dialog._place("text")
+    assert opened[0].src == dialog.src and opened[0].page_box.value() == 2
+    composed = dialog.current
+    dialog._place("image")
+    assert opened[1].src == composed != dialog.src  # the second is placed on the page with the first already on it
+    assert _rows(dialog) == ['Text "PAID" on all pages', "Image pic.png on pages 1"]
+    FakePlace.accept = False
+    dialog._place("text")
+    assert len(dialog.ops) == 2
+
+
+def test_edit_dialog_remove_and_an_edit_that_does_not_apply(qapp, make_pdf):
+    dialog = EditDialog(None, make_pdf("a.pdf", 1))
+    assert dialog._set([WATERMARK])
+    assert not dialog._set([WATERMARK, {**TEXT, "pages": "4"}])
+    assert "outside 1-1" in dialog.error.text() and dialog.ops == [WATERMARK]  # the list only holds edits that apply
+    assert dialog._set([*dialog.ops, NUMBERS]) and dialog.error.text() == ""
+    dialog.list.setCurrentRow(0)
+    dialog._remove()
+    assert _rows(dialog) == ["Page numbers: Page 1, Top left"]
+    dialog._remove()
+    assert dialog.ops == [] and dialog.current == dialog.src and not dialog.remove.isEnabled()
+    dialog._remove()  # nothing selected: nothing happens
+    assert dialog.ops == []
+
+
+def test_edit_dialog_saves_and_loads_edits(qapp, make_pdf, tmp_path: Path, monkeypatch):
+    dialog = EditDialog(None, make_pdf("a.pdf", 1))
+    dialog._set([WATERMARK, NUMBERS])
+    typed = tmp_path / "recipe"  # no suffix typed: it is added
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QFileDialog.getSaveFileName", staticmethod(lambda *a: (str(typed), "")))
+    dialog._save_edits()
+    saved = tmp_path / f"recipe{EDITS_EXT}"
+    assert json.loads(saved.read_text()) == [WATERMARK, NUMBERS]
+    other = EditDialog(None, make_pdf("b.pdf", 2))
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QFileDialog.getOpenFileName", staticmethod(lambda *a: (str(saved), "")))
+    other._load_edits()
+    assert other.ops == [WATERMARK, NUMBERS] and other.current != other.src
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QFileDialog.getSaveFileName", staticmethod(lambda *a: ("", "")))
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QFileDialog.getOpenFileName", staticmethod(lambda *a: ("", "")))
+    saved.unlink()
+    dialog._save_edits()  # cancelled chooser writes nothing
+    other._load_edits()  # and loads nothing
+    assert not saved.exists() and len(other.ops) == 2
+
+
+def test_edit_dialog_load_stops_at_the_first_bad_edit(qapp, make_pdf, tmp_path: Path, monkeypatch):
+    path = tmp_path / f"x{EDITS_EXT}"
+    path.write_text(json.dumps([WATERMARK, {**TEXT, "pages": "9"}, NUMBERS]))
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QFileDialog.getOpenFileName", staticmethod(lambda *a: (str(path), "")))
+    dialog = EditDialog(None, make_pdf("a.pdf", 1))
+    dialog._load_edits()
+    assert dialog.ops == [WATERMARK] and "outside 1-1" in dialog.error.text()
+    path.write_text("not json")
+    dialog._load_edits()
+    assert "Expecting value" in dialog.error.text() and dialog.ops == [WATERMARK]
+
+
+def test_edit_dialog_cancel_asks_only_when_edits_are_pending(qapp, make_pdf, monkeypatch):
+    dialog = EditDialog(None, make_pdf("a.pdf", 1))
+    rejected: list[int] = []
+    dialog.rejected.connect(lambda: rejected.append(1))
+    dialog.reject()
+    assert rejected == [1]  # nothing to lose, no question
+    dialog._set([WATERMARK])
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QMessageBox.question", staticmethod(lambda *a: QMessageBox.StandardButton.No))
+    dialog.reject()
+    assert rejected == [1]  # kept open
+    monkeypatch.setattr("pdf_helper.ui.edit_dialog.QMessageBox.question", staticmethod(lambda *a: QMessageBox.StandardButton.Yes))
+    dialog.reject()
+    assert rejected == [1, 1]
 
 
 # --- DragPreview / RedactDialog --------------------------------------------

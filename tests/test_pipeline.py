@@ -15,7 +15,7 @@ from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.convert import IMAGE_SIZE
-from pdf_helper.features import create_pdf, merge, redact, split, to_images, watermark
+from pdf_helper.features import create_pdf, edit, merge, redact, split, to_images
 from tests.conftest import fake_ask_output
 
 
@@ -44,17 +44,29 @@ def test_merge_pipeline(qapp, make_pdf, make_png, tmp_path: Path, monkeypatch):
     assert "merged 3 files" in text and text.rstrip().endswith("done")
 
 
-def test_watermark_pipeline_whole_queue(qapp, make_pdf, tmp_path: Path, monkeypatch):
-    out_dir = tmp_path / "stamped"
+def test_edit_pipeline_whole_queue(qapp, make_pdf, tmp_path: Path, monkeypatch):
+    out_dir = tmp_path / "edited"
     out_dir.mkdir()
-    monkeypatch.setattr(watermark, "ask_text", lambda *a: "DRAFT")
-    monkeypatch.setattr(watermark, "ask_output", fake_ask_output(out_dir))
+
+    class FakeEditDialog:
+        ops = [{"kind": "watermark", "text": "DRAFT"}, {"kind": "numbers", "fmt": "{n}", "position": "Top right"}]
+
+        def __init__(self, parent, src: Path):
+            pass
+
+        def exec(self) -> bool:
+            return True
+
+    monkeypatch.setattr(edit, "EditDialog", FakeEditDialog)
+    monkeypatch.setattr(edit, "ask_output", fake_ask_output(out_dir))
     w = MainWindow()
     w.queue.add_paths([make_pdf("a.pdf", 1), make_pdf("b.pdf", 2)])
 
-    text = _run(w, "Watermark", qapp)
+    text = _run(w, "Edit", qapp)
 
-    assert sorted(p.name for p in out_dir.glob("*.pdf")) == ["a-stamped.pdf", "b-stamped.pdf"]
+    assert sorted(p.name for p in out_dir.glob("*.pdf")) == ["a-edited.pdf", "b-edited.pdf"]
+    with pymupdf.open(out_dir / "b-edited.pdf") as doc:
+        assert "DRAFT" in doc[1].get_text() and "2" in doc[1].get_text()
     assert "ERROR" not in text and text.rstrip().endswith("done")
 
 
@@ -98,7 +110,7 @@ def test_pipeline_queue_removal_regates_buttons(qapp, make_pdf, make_png):
     w.queue.remove_selected()
 
     assert w.queue.paths() == [pdf]
-    assert "Watermark" in {f.label for f, b in w.feature_buttons if b.isEnabled()}
+    assert "Edit" in {f.label for f, b in w.feature_buttons if b.isEnabled()}
 
 
 @pytest.mark.parametrize("theme, applied", [("System", True), ("Dark", False)])

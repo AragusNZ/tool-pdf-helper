@@ -1,4 +1,4 @@
-"""Click-on-the-page placement dialog, shared by Add text and Add image."""
+"""Click-on-the-page placement dialog: Edit > Add text and Add image."""
 
 from pathlib import Path
 
@@ -177,10 +177,11 @@ class PlaceDialog(QDialog):
         width = self.width_mm.value() * MM
         return (x, y, x + width, y + width * self._aspect)
 
-    def params(self) -> tuple:
-        """Feature parameters: text mode (text, point, spec, font, size, rgb); image mode (path, rect, spec)."""
+    def op(self) -> dict:
+        """The edit this dialog describes, JSON-ready: see ``core.edit``."""
         spec = self.spec.text().strip()
         if self.mode == "text":
-            rgb = (self.colour.redF(), self.colour.greenF(), self.colour.blueF())
-            return (self.text.text(), self.point, spec, self.font.currentData(), self.size.value(), rgb)
-        return (Path(self.image.text()), self.box(), spec)
+            colour = [self.colour.redF(), self.colour.greenF(), self.colour.blueF()]
+            return {"kind": "text", "text": self.text.text(), "pos": list(self.point), "pages": spec,
+                    "font": self.font.currentData(), "size": self.size.value(), "color": colour}
+        return {"kind": "image", "image": self.image.text(), "rect": list(self.box()), "pages": spec}

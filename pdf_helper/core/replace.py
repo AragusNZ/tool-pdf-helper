@@ -25,7 +25,7 @@ def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bo
                 if case_sensitive and page.get_textbox(rect).strip() not in old:  # a wrapped hit is one rect per line
                     continue
                 spans = [
-                    s for b in page.get_text("dict", clip=rect)["blocks"] for line in b["lines"] for s in line["spans"]
+                    s for b in page.get_text("dict", clip=rect)["blocks"] for line in b.get("lines", ()) for s in line["spans"]
                 ]
                 size = spans[0]["size"] if spans else 11.0
                 rgb = spans[0]["color"] if spans else 0
