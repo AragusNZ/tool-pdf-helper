@@ -115,7 +115,7 @@ Helpers you should be using rather than reimplementing:
   goes through it.
 - **`ask_page_spec`** in `ui/dialogs.py` — the `1-3,5` prompt. Re-asks until the spec parses, and returns `[]` for
   a blank one when `allow_blank` is set.
-- **`ctx.log(...)`** — one line per file, to the log pane.
+- **`ctx.log(...)`** — one line per file, to the run dialog's Details and the session log (Help > Show Log).
 
 ## Conventions that bite
 

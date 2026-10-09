@@ -23,6 +23,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -30,7 +31,6 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QStyleFactory,
     QTabWidget,
@@ -45,6 +45,7 @@ from pdf_helper.features import FEATURES
 from pdf_helper.features.base import Feature, FeatureContext
 from pdf_helper.ui.dialogs import open_file_paths
 from pdf_helper.ui.file_queue import FileQueue
+from pdf_helper.ui.run_dialog import RunDialog
 from pdf_helper.ui.theme import apply_scheme, asset_path
 from pdf_helper.ui.worker import Worker
 
@@ -71,32 +72,24 @@ class MainWindow(QMainWindow):
         self._feature: Feature | None = None  # the running (or last) job, for the notice
         self._error: str | None = None
         self._cancelled = False  # Qt clears isInterruptionRequested once the thread ends, so remember it here
+        self.run_dialog: RunDialog | None = None
 
         self.queue = FileQueue()
         self.queue.changed.connect(self._refresh_buttons)
         self.log_view = QPlainTextEdit(readOnly=True, maximumBlockCount=5000)
         self.log_view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.log_dialog = self._log_dialog()
 
         self._build_menus()
         layout = QVBoxLayout()
         layout.setContentsMargins(16, 16, 16, 16)  # Fluent: 16epx surface to edge, 12 between cards
         layout.setSpacing(12)
-        layout.addWidget(self._files_group(), stretch=3)
+        layout.addWidget(self._files_group(), stretch=1)
         layout.addWidget(self._actions_tabs())
         layout.addLayout(self._run_row())
-        layout.addWidget(self._log_group(), stretch=2)
         root = QWidget()
         root.setLayout(layout)
         self.setCentralWidget(root)
-
-        self.progress = QProgressBar(maximumWidth=140, textVisible=False)
-        self.progress.setRange(0, 0)  # indeterminate: features report no percentage
-        self.progress.hide()
-        self.statusBar().addPermanentWidget(self.progress)
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self._cancel)
-        self.cancel_button.hide()
-        self.statusBar().addPermanentWidget(self.cancel_button)
         self._refresh_buttons()
 
     # --- construction ------------------------------------------------------
@@ -164,18 +157,20 @@ class MainWindow(QMainWindow):
         row.addWidget(self.run_button)
         return row
 
-    def _log_group(self) -> QGroupBox:
-        self.open_output = QPushButton("Open output folder", enabled=False)
-        self.open_output.clicked.connect(self._open_output)
+    def _log_dialog(self) -> QDialog:
+        """The session log, on demand from Help > Show Log; non-modal so it can stay open beside the window."""
+        open_file = QPushButton("Open log file")
+        open_file.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(LOG_FILE))))
         buttons = QHBoxLayout()
         buttons.addStretch()
-        buttons.addWidget(self.open_output)
-        inner = QVBoxLayout()
+        buttons.addWidget(open_file)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Log")
+        dialog.resize(640, 400)
+        inner = QVBoxLayout(dialog)
         inner.addWidget(self.log_view)
         inner.addLayout(buttons)
-        group = QGroupBox("Log")
-        group.setLayout(inner)
-        return group
+        return dialog
 
     def _build_menus(self) -> None:
         theme_menu = self.menuBar().addMenu("&View").addMenu("&Theme")
@@ -192,11 +187,17 @@ class MainWindow(QMainWindow):
         self.startup_check.toggled.connect(lambda on: settings().setValue("check_updates", on))
         help_menu.addAction(self.startup_check)
         help_menu.addSeparator()
+        help_menu.addAction(QAction("Show &Log...", self, triggered=self._show_log))
+        help_menu.addSeparator()
         help_menu.addAction(QAction("&About", self, triggered=self._about))
 
     def _set_theme(self, name: str) -> None:
         settings().setValue("theme", name)
         apply_scheme(name)
+
+    def _show_log(self) -> None:
+        self.log_dialog.show()
+        self.log_dialog.raise_()
 
     def _about(self) -> None:
         QMessageBox.about(self, "PDF Helper", f"PDF Helper {__version__}\n\nLog file: {LOG_FILE}")
@@ -206,14 +207,18 @@ class MainWindow(QMainWindow):
         """Ask GitHub off the UI thread; a startup check (manual=False) stays silent unless there is news."""
         if self._update_worker is not None:
             if manual:
-                self.log("already checking for updates...")
+                self.statusBar().showMessage("Already checking for updates...", 5000)
             return
         result: dict = {}
         self._update_worker = Worker(lambda: result.update(latest=latest_version()), parent=self)
         if manual:
-            self._update_worker.failed.connect(lambda m: self.log(f"ERROR: update check failed: {m}"))
+            self._update_worker.failed.connect(self._on_update_failed)
         self._update_worker.finished.connect(lambda: self._on_update_checked(result.get("latest"), manual))
         self._update_worker.start()
+
+    def _on_update_failed(self, message: str) -> None:
+        self.log(f"ERROR: update check failed: {message}")
+        QMessageBox.warning(self, "PDF Helper", f"Update check failed: {message}")
 
     def _on_update_checked(self, latest: str | None, manual: bool) -> None:
         if self._update_worker is not None:
@@ -241,6 +246,8 @@ class MainWindow(QMainWindow):
     def _report_skipped(self, skipped) -> None:
         for p in skipped:
             self.log(f"skipped {p.name}")  # unsupported, or gone since it was picked
+        if skipped:
+            self.statusBar().showMessage(f"Skipped {len(skipped)} file(s) - see Help > Show Log", 5000)
 
     def _refresh_buttons(self) -> None:
         files = self.queue.paths()
@@ -296,60 +303,50 @@ class MainWindow(QMainWindow):
         ctx.cancelled = self._worker.isInterruptionRequested
         ctx.parent = None
         self._ctx = ctx
+        self.run_dialog = RunDialog(self, feature.label)
+        self.run_dialog.cancelled.connect(self._cancel)
+        self.run_dialog.open_output.connect(self._open_output)
         self._worker.message.connect(self.log)
-        self._worker.progress.connect(self._on_progress)
+        self._worker.message.connect(self.run_dialog.message)
+        self._worker.progress.connect(self.run_dialog.set_progress)
         self._worker.failed.connect(self._on_failed)
         self._worker.finished.connect(self._on_finished)
         self._refresh_buttons()
-        self.progress.setRange(0, 0)  # busy until the first file reports
-        self.progress.setTextVisible(False)
-        self.progress.show()
-        self.cancel_button.setEnabled(True)
-        self.cancel_button.show()
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.run_dialog.show()
         self._worker.start()
 
     @Slot(str)
     def _on_failed(self, message: str) -> None:
         self.log(f"ERROR: {message} (details: {LOG_FILE})")
+        self.run_dialog.message(f"ERROR: {message} (details: {LOG_FILE})")
         self._error = message
 
     @Slot()
     def _on_finished(self) -> None:
-        QApplication.restoreOverrideCursor()
-        self.progress.hide()
-        self.cancel_button.hide()
         label = self._feature.label
         written = f" - {len(self._ctx.outputs)} output(s) written" if self._ctx.outputs else ""
         if self._error is not None:
-            self._set_notice(f"{label} failed: {self._error} - see the log", QPalette.ColorRole.BrightText)
+            text, role = f"{label} failed: {self._error}", QPalette.ColorRole.BrightText
         elif self._cancelled:
-            self._set_notice(f"{label} cancelled{written}")
+            text, role = f"{label} cancelled{written}", QPalette.ColorRole.WindowText
         else:
             self.log("done")
-            self._set_notice(f"{label} done{written}", QPalette.ColorRole.Link)
+            text, role = f"{label} done{written}", QPalette.ColorRole.Link
+        self._set_notice(text, role)
         if self._ctx.outputs:
             # ponytail: first output's folder only; Create PDF(s) across several source folders opens one of them.
             first = self._ctx.outputs[0]
             self._output_dir = first if first.is_dir() else first.parent
-        self.open_output.setEnabled(self._output_dir is not None)
+        self.run_dialog.finish(text, role, self._output_dir is not None)
         if self._worker is not None:
             self._worker.deleteLater()
         self._worker = None
         self._refresh_buttons()
 
-    @Slot(int, int)
-    def _on_progress(self, done: int, total: int) -> None:
-        self.progress.setRange(0, total)
-        self.progress.setValue(done)
-        self.progress.setFormat("%v of %m")
-        self.progress.setTextVisible(True)
-
     def _cancel(self) -> None:
         if self._worker is not None:
             self._worker.requestInterruption()
             self._cancelled = True
-            self.cancel_button.setEnabled(False)
             self.log("cancelling after the current file...")
 
     def _open_output(self) -> None:
@@ -359,7 +356,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         # Destroying a running QThread aborts the process; refuse to close until the job is done.
         if self._worker is not None:
-            self.log("still working - press Cancel or wait for 'done'")
+            self.run_dialog.raise_()  # modal, so this is only reachable by Alt+F4 on the parent
             event.ignore()
         else:
             if self._update_worker is not None:

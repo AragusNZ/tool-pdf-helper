@@ -36,9 +36,10 @@ tabs. Every action works on the whole queue. The actions sit on five tabs.
 several you pick a folder and the text added to each file's name — `-small` turns `invoice.pdf` into
 `invoice-small.pdf`. The names below are those defaults.
 
-While a job runs, the bar at the bottom counts files done and **Cancel** stops it after the current file. When it
-finishes, the line beside **Run** says whether it worked, in green, or failed, in red, and **Open output folder**
-under the log opens where the files went.
+While a job runs, a dialog counts files done and **Cancel** stops it after the current file; nothing else in the
+window responds until it is over. When it finishes, the dialog says whether it worked, in green, or failed, in red,
+with **OK** and, when files were written, **Open output folder**. **Details** in the dialog lists what happened to
+each file; it opens by itself when one fails. The line beside **Run** repeats the result after the dialog closes.
 
 ### Convert
 
@@ -94,7 +95,7 @@ under the log opens where the files went.
   file rather than covered over: the text is deleted from the page content and image pixels under a box go with it.
   Boxes are dragged on the first queued PDF and applied to every queued PDF, as Edit does. Writes
   `<name>-redacted.pdf`.
-- **Find text** – lists which pages of which queued PDFs hold a phrase, in the log pane. Writes nothing, and matches
+- **Find text** – lists which pages of which queued PDFs hold a phrase, under **Details** in the run dialog. Writes nothing, and matches
   inside words the same way Replace text does.
 - **Footnote comments** – turns reviewer comments into footnotes. Every annotation with a comment (highlight,
   underline, strike-out, sticky note, box, circle, line, ink) gets a small red number, and the comments are listed
@@ -128,7 +129,7 @@ gets ` (2)`, ` (3)` and so on appended, so a second run never replaces the first
 Save dialog is replaced only after Windows asks you to confirm.
 
 **One bad file does not stop the batch.** The failure is logged and the rest of the queue still runs. Full
-tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); the log pane shows the path after any error.
+tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); **Details** shows the path after any error.
 The log is capped at 1 MB with one previous copy kept.
 
 **Fonts for Edit > Add text.** The 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the
@@ -177,8 +178,9 @@ by hand is both unverifiable and slower to earn SmartScreen's trust.
 
 ## Something went wrong
 
-1. Read the log pane at the bottom of the window — the error names the file it failed on.
-2. Open `PdfHelper.log` in `%TEMP%` for the full traceback. The log pane prints its path after any error.
+1. Open **Details** in the run dialog, or **Help > Show Log** afterwards — the error names the file it failed on.
+2. Open `PdfHelper.log` in `%TEMP%` for the full traceback (**Open log file** in the log window). Details prints
+   its path after any error.
 3. Report it at [Issues](https://github.com/AragusNZ/tool-pdf-helper/issues) with that traceback, the button you
    pressed and the version from **Help > About**.
 

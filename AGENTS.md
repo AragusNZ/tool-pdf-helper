@@ -31,7 +31,7 @@ pdf_helper/
   app.py          the window, the Actions tabs, logging setup — wires the rest together
   core/           pure PDF/file utilities, no Qt import anywhere
   features/       one file per button, plus base.py holding the Feature contract
-  ui/             Qt widgets: file queue, dialogs, page preview, placement and redaction, theme, worker
+  ui/             Qt widgets: file queue, dialogs, run dialog, page preview, placement and redaction, theme, worker
   assets/         icon.ico and the SVGs it is generated from
 tools/make_icon.py  regenerates assets/icon.ico from the SVGs
 tests/            pytest, one file per core module or feature group
@@ -75,8 +75,8 @@ and every generated name goes through `fresh` in `core/paths.py`, which appends 
 
 - **No Qt outside `ui/`, `app.py` and a feature's `prepare`.** Worker-thread code that imports
   PySide6 widgets is the bug this layout exists to prevent.
-- **Tracebacks go to `PdfHelper.log`** in the system temp folder — the exe has no console. The log
-  pane shows the path after any error.
+- **Tracebacks go to `PdfHelper.log`** in the system temp folder — the exe has no console. The run
+  dialog's Details and Help > Show Log show the path after any error.
 - **Office inputs** need Microsoft Office or LibreOffice on the machine. `PDF_HELPER_NO_COM=1`
   forces the LibreOffice path when testing.
 - **Tests run offscreen.** `tests/conftest.py` sets `QT_QPA_PLATFORM=offscreen`; the `qapp` fixture

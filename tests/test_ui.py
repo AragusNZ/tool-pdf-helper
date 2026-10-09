@@ -811,3 +811,53 @@ def test_ask_options_colour_presets_and_picker(qapp, monkeypatch):
     monkeypatch.setattr(QColorDialog, "getColor", staticmethod(lambda *a, **k: picked.pop(0)))
     monkeypatch.setattr(QDialog, "exec", pick_custom)
     assert dialogs.ask_options(None, "t", fields) == {"Ink": "#123456"}
+
+
+# --- RunDialog --------------------------------------------------------------
+def test_run_dialog_progress_and_details(qapp):
+    from PySide6.QtGui import QPalette
+
+    from pdf_helper.ui.run_dialog import RunDialog
+
+    d = RunDialog(None, "Compress")
+    assert d.windowTitle() == "Compress" and d.progress.maximum() == 0  # busy until the first file reports
+    assert not d.details_button.isChecked()
+    d.set_progress(2, 5)
+    assert d.progress.text() == "2 of 5" and d.progress.isTextVisible()
+    d.message("a.pdf: 1 MB -> 0.5 MB")
+    assert not d.details_button.isChecked()  # ordinary lines stay behind the toggle
+    d.message("ERROR: b.pdf: broken <file>")
+    assert d.details_button.isChecked() and "ERROR: b.pdf: broken <file>" in d.details.toPlainText()
+    d.show()
+    assert d.details.isVisible()
+    d.details_button.setChecked(False)
+    assert not d.details.isVisible()
+    d.finish("Compress done", QPalette.ColorRole.Link, has_outputs=False)
+    assert d.status.text() == "Compress done" and d.status.foregroundRole() == QPalette.ColorRole.Link
+    assert [b.text() for b in d.buttons.buttons()] == ["OK"] and not d.progress.isTextVisible()
+    d.reject()  # Esc after the run is over closes it
+    assert not d.isVisible()
+
+
+def test_run_dialog_esc_while_running_cancels_once(qapp):
+    from PySide6.QtGui import QPalette
+
+    from pdf_helper.ui.run_dialog import RunDialog
+
+    d = RunDialog(None, "T")
+    cancels: list[int] = []
+    opened: list[int] = []
+    d.cancelled.connect(lambda: cancels.append(1))
+    d.open_output.connect(lambda: opened.append(1))
+    d.show()
+    d.reject()
+    assert d.isVisible() and cancels == [1] and d.status.text().startswith("Cancelling")
+    assert not d.buttons.button(d.buttons.StandardButton.Cancel).isEnabled()
+    d.reject()  # a second Esc asks nothing new
+    assert cancels == [1] and d.isVisible()
+    d.finish("T cancelled", QPalette.ColorRole.WindowText, has_outputs=True)
+    assert sorted(b.text() for b in d.buttons.buttons()) == ["OK", "Open output folder"]
+    next(b for b in d.buttons.buttons() if b.text() == "Open output folder").click()
+    assert opened == [1] and d.isVisible()
+    d.buttons.button(d.buttons.StandardButton.Ok).click()
+    assert not d.isVisible()

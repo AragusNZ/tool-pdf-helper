@@ -5,6 +5,15 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Changed
+
+- A job now runs behind a dialog: a progress bar and **Cancel**, and nothing else in the window responds until it
+  is over. When it ends the dialog reads "done", "failed" with the reason, or "cancelled", with **OK** and, when
+  files were written, **Open output folder**. **Details** in the dialog holds the one line per file that used to
+  go to the log pane, and opens by itself when a file fails. Find text reports its hits there.
+- The log pane is gone from the main window. **Help > Show Log** opens the session log in its own window, with
+  **Open log file** for the full `PdfHelper.log`. A manual update check that fails now says so in a message box.
+
 ## [1.4.1] - 2026-10-09
 
 ### Fixed

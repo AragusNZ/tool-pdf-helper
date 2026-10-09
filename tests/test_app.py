@@ -119,9 +119,40 @@ def test_notice_reports_a_failed_run(qapp, make_pdf):
     w.queue.add_paths([make_pdf("a.pdf", 1)])
     w._run_feature(feat)
     _wait(w, qapp)
-    assert w.notice.text() == "T failed: 1 of 3 file(s) failed - see the log"
+    assert w.notice.text() == "T failed: 1 of 3 file(s) failed"
     assert w.notice.foregroundRole() == app_module.QPalette.ColorRole.BrightText
     assert not w.log_view.toPlainText().rstrip().endswith("done")
+    # the dialog says the same, in red, with the failure line expanded and the log path in it
+    d = w.run_dialog
+    assert d.status.text() == w.notice.text() and d.status.foregroundRole() == app_module.QPalette.ColorRole.BrightText
+    assert d.details_button.isChecked() and str(app_module.LOG_FILE) in d.details.toPlainText()
+
+
+def test_run_dialog_is_modal_while_busy_and_offers_ok_when_done(qapp, make_pdf):
+    import threading
+
+    gate = threading.Event()
+    feat = Feature(label="T", run=lambda ctx, p: gate.wait(5))
+    w = _window(qapp, [feat])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(feat)
+    d = w.run_dialog
+    assert d.isVisible() and d.windowModality() == app_module.Qt.WindowModality.WindowModal
+    assert d.windowTitle() == "T" and d.status.text() == "Working..."
+    assert [b.text() for b in d.buttons.buttons()] == ["Cancel"] and not d.details.isVisible()
+    gate.set()
+    _wait(w, qapp)
+    assert d.status.text() == "T done" and d.status.foregroundRole() == app_module.QPalette.ColorRole.Link
+    assert [b.text() for b in d.buttons.buttons()] == ["OK"]
+    d.buttons.button(d.buttons.StandardButton.Ok).click()
+    assert not d.isVisible()
+
+
+def test_help_menu_shows_the_session_log(qapp):
+    w = MainWindow()
+    assert not w.log_dialog.isVisible()
+    w._show_log()
+    assert w.log_dialog.isVisible() and w.log_view.parent() is w.log_dialog
 
 
 def test_notice_reports_prepare_cancel_and_error(qapp, make_pdf):
@@ -177,7 +208,7 @@ def test_close_refused_while_busy(qapp, make_pdf):
     w._run_feature(feat)
     ev = QCloseEvent()
     w.closeEvent(ev)
-    assert not ev.isAccepted() and "still working" in w.log_view.toPlainText()
+    assert not ev.isAccepted() and w.run_dialog.isVisible()
     _wait(w, qapp)
     ev = QCloseEvent()
     w.closeEvent(ev)
@@ -255,6 +286,7 @@ def _stub_update(monkeypatch, latest):
     monkeypatch.setattr(app_module, "latest_version", fetch)
     monkeypatch.setattr(app_module.QMessageBox, "question", lambda *a: app_module.QMessageBox.StandardButton.Yes)
     monkeypatch.setattr(app_module.QMessageBox, "information", lambda *a: seen["info"].append(a[-1]))
+    monkeypatch.setattr(app_module.QMessageBox, "warning", lambda *a: seen["info"].append(a[-1]))
     monkeypatch.setattr(app_module.QDesktopServices, "openUrl", lambda url: seen["opened"].append(url.toString()))
     return seen
 
@@ -275,13 +307,14 @@ def test_up_to_date_speaks_only_when_asked(qapp, monkeypatch):
     assert len(seen["info"]) == 1 and "up to date" in seen["info"][0] and seen["opened"] == []
 
 
-def test_update_failure_logged_only_when_asked(qapp, monkeypatch):
-    _stub_update(monkeypatch, OSError("offline"))
+def test_update_failure_reported_only_when_asked(qapp, monkeypatch):
+    seen = _stub_update(monkeypatch, OSError("offline"))
     w = MainWindow()
     _check(w, qapp, manual=False)
-    assert "update check failed" not in w.log_view.toPlainText()
+    assert "update check failed" not in w.log_view.toPlainText() and seen["info"] == []
     _check(w, qapp, manual=True)
     assert "ERROR: update check failed: offline" in w.log_view.toPlainText()
+    assert seen["info"] == ["Update check failed: offline"]
 
 
 def test_startup_check_toggle_is_remembered(qapp):
@@ -315,7 +348,7 @@ def test_close_waits_for_a_running_update_check(qapp, monkeypatch):
     w._check_updates(manual=False)
     worker = w._update_worker
     w._check_updates(manual=True)  # second click while one is in flight is ignored, but says so
-    assert w._update_worker is worker and "already checking" in w.log_view.toPlainText()
+    assert w._update_worker is worker and "Already checking" in w.statusBar().currentMessage()
     threading.Timer(0.2, release.set).start()
     started = time.monotonic()
     ev = QCloseEvent()
@@ -351,17 +384,18 @@ def test_cancel_stops_between_files(qapp, tmp_path: Path):
     w = _window(qapp, [feat])
     w.queue.add_paths(files)
     w._run_feature(feat)
-    assert not w.cancel_button.isHidden()  # in the status bar while busy
+    d = w.run_dialog
+    cancel = d.buttons.button(d.buttons.StandardButton.Cancel)
     assert started.wait(5)
-    w.cancel_button.click()
-    assert not w.cancel_button.isEnabled() and w._worker.isInterruptionRequested()
+    cancel.click()
+    assert not cancel.isEnabled() and w._worker.isInterruptionRequested()
+    assert d.isVisible() and d.status.text().startswith("Cancelling")
     gate.set()
     _wait(w, qapp)
-    assert w.cancel_button.isHidden()
     text = w.log_view.toPlainText()
-    assert seen == ["a.txt"] and "cancelled: 1 of 3 file(s) done" in text
-    assert w.notice.text() == "T cancelled - 1 output(s) written"
-    assert w.progress.maximum() == 3 and w.progress.value() == 1 and w.progress.text() == "1 of 3"
+    assert seen == ["a.txt"] and "cancelled: 1 of 3 file(s) done" in text and "1 of 3 file(s) done" in d.details.toPlainText()
+    assert w.notice.text() == "T cancelled - 1 output(s) written" == d.status.text()
+    assert d.progress.maximum() == 1 and d.progress.value() == 1  # full once the run is over, whatever it did
 
 
 def test_open_output_folder_after_a_job(qapp, monkeypatch, make_pdf, tmp_path: Path):
@@ -372,12 +406,12 @@ def test_open_output_folder_after_a_job(qapp, monkeypatch, make_pdf, tmp_path: P
     out.write_bytes(b"")
     feat = Feature(label="T", run=lambda ctx, p: ctx.outputs.append(out))
     w = _window(qapp, [feat])
-    assert not w.open_output.isEnabled()
     w.queue.add_paths([make_pdf("a.pdf", 1)])
     w._run_feature(feat)
     _wait(w, qapp)
-    assert w.open_output.isEnabled()
-    w.open_output.click()
+    d = w.run_dialog
+    assert sorted(b.text() for b in d.buttons.buttons()) == ["OK", "Open output folder"]
+    next(b for b in d.buttons.buttons() if b.text() == "Open output folder").click()
     assert [Path(o) for o in opened] == [out.parent]
 
 
@@ -388,10 +422,10 @@ def test_a_job_that_writes_nothing_does_not_reopen_the_last_folder(qapp, make_pd
     w.queue.add_paths([make_pdf("a.pdf", 1)])
     w._run_feature(writer)
     _wait(w, qapp)
-    assert w.open_output.isEnabled()
+    assert len(w.run_dialog.buttons.buttons()) == 2
     w._run_feature(silent)
     _wait(w, qapp)
-    assert not w.open_output.isEnabled() and w._output_dir is None
+    assert [b.text() for b in w.run_dialog.buttons.buttons()] == ["OK"] and w._output_dir is None
 
 
 def test_output_folder_can_be_the_output_itself(qapp, make_pdf, tmp_path: Path):
