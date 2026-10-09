@@ -15,7 +15,8 @@ All notable changes to this project are documented here, in
   bookmarked. Replies are listed under the comment they answer. One dialog picks the options: quote the
   highlighted text or not, list highlights that have no comment, show the reviewer's name, keep the highlights
   as annotations or flatten them into the page, put the notes after each page / at the end / on their own,
-  put the number in the right margin / left margin / after the phrase, and also write `<name>-notes.md`.
+  put the number in the right margin / left margin / after the phrase, pick its size and colour and give it a grey
+  disc, and also write `<name>-notes.md`.
   Writes `<name>-notes.pdf`.
 
 ## [1.2.0] - 2026-09-25

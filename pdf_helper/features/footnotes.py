@@ -9,6 +9,8 @@ from pdf_helper.ui.dialogs import ask_options, choose_directory
 
 PLACEMENT = {"After each page": "after", "At the end": "end", "Notes only, no source pages": "only"}
 MARKER = {"Right margin": "right", "Left margin": "left", "After the phrase": "inline"}
+SIZE = {"Small (7 pt)": 7, "Medium (9 pt)": 9, "Large (12 pt)": 12}
+COLOUR = {"Red": (0.8, 0, 0), "Blue": (0, 0.3, 0.8), "Green": (0, 0.5, 0), "Orange": (0.9, 0.45, 0), "Black": (0, 0, 0)}
 FIELDS: dict[str, bool | list[str]] = {
     "Each note holds": ["Comment only", "Quote the highlight, then the comment"],
     "Include highlights that have no comment": False,
@@ -16,6 +18,9 @@ FIELDS: dict[str, bool | list[str]] = {
     "Highlights": ["Keep as annotations", "Flatten into the page"],
     "Notes go": list(PLACEMENT),
     "Number sits": list(MARKER),
+    "Number size": list(SIZE),
+    "Number colour": list(COLOUR),
+    "Number in a grey circle": False,
     "Also write <name>-notes.md": False,
 }
 
@@ -35,6 +40,9 @@ def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
         placement=PLACEMENT[str(answers["Notes go"])],
         marker=MARKER[str(answers["Number sits"])],
         export=bool(answers["Also write <name>-notes.md"]),
+        mark_size=SIZE[str(answers["Number size"])],
+        mark_color=COLOUR[str(answers["Number colour"])],
+        circle=bool(answers["Number in a grey circle"]),
     )
     return opts, out_dir
 

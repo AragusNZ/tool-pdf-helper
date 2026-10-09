@@ -591,11 +591,17 @@ def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     answers["Notes go"] = "At the end"
     answers["Number sits"] = "Left margin"
     answers["Also write <name>-notes.md"] = True
+    answers["Number size"] = "Large (12 pt)"
+    answers["Number colour"] = "Blue"
+    answers["Number in a grey circle"] = True
     monkeypatch.setattr(footnotes, "ask_options", lambda *a: answers)
     monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path)
     ctx = FeatureContext([pdf], log)
     params = footnotes.FEATURE.prepare(ctx)
-    assert params == (NotesOptions(quote=True, placement="end", marker="left", export=True), tmp_path)
+    expected = NotesOptions(
+        quote=True, placement="end", marker="left", export=True, mark_size=12, mark_color=(0, 0.3, 0.8), circle=True,
+    )
+    assert params == (expected, tmp_path)
     footnotes.FEATURE.run(ctx, params)
     assert page_count(tmp_path / "a-notes.pdf") == 2 and (tmp_path / "a-notes.md").exists()
     assert ctx.outputs == [tmp_path / "a-notes.pdf", tmp_path / "a-notes.md"]

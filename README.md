@@ -82,8 +82,8 @@ finishes, **Open output folder** under the log opens where the files went.
   on notes pages, numbered through the whole file. Numbers link to their note and back, the notes pages are
   bookmarked, and replies sit under the comment they answer. One dialog picks: quote the highlighted text, list
   highlights that have no comment, show the reviewer's name, keep or flatten the highlights, notes after each page
-  / at the end / on their own, number in the right margin / left margin / after the phrase, and an extra
-  `<name>-notes.md`. Writes `<name>-notes.pdf`.
+  / at the end / on their own, number in the right margin / left margin / after the phrase, its size, colour and an optional grey disc, and an
+  extra `<name>-notes.md`. Writes `<name>-notes.pdf`.
 
 ### Output
 

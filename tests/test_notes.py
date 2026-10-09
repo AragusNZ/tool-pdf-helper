@@ -30,9 +30,9 @@ def test_numbers_run_through_the_file_and_only_commented_pages_get_notes(tmp_pat
     with pymupdf.open(out) as doc:
         texts = [p.get_text() for p in doc]
         assert doc.page_count == 5  # 3 + a notes page after pages 1 and 3
-        assert texts[1].startswith("Notes for page 1") and "1. one" in texts[1] and "2. two" in texts[1]
+        assert texts[1].startswith("Notes for page 1") and "\n1\none\n2\ntwo\n" in texts[1]
         assert "line 0 of page 2" in texts[2] and "Notes" not in texts[2]
-        assert texts[4].startswith("Notes for page 3") and "3. three" in texts[4]
+        assert texts[4].startswith("Notes for page 3") and "\n3\nthree\n" in texts[4]
         assert "3" in texts[3] and len(list(doc[3].annots())) == 1  # marker stamped, highlight kept
         assert "Ann" not in texts[1]  # authors off by default
 
@@ -57,7 +57,7 @@ def test_quote_authors_and_bake(tmp_path: Path):
     out = tmp_path / "out.pdf"
     footnote_comments(src, out, NotesOptions(quote=True, authors=True, bake=True))
     with pymupdf.open(out) as doc:
-        assert "“line 0 of page 1” — why — Ann" in doc[1].get_text()
+        assert "\n1\n“line 0 of page 1”\nwhy\n— Ann\n" in doc[1].get_text()
         assert not list(doc[0].annots())
 
 
@@ -75,7 +75,7 @@ def test_uncommented_highlights_listed_only_on_request(tmp_path: Path):
     assert footnote_comments(src, tmp_path / "a-out.pdf") == 1
     assert footnote_comments(src, tmp_path / "b-out.pdf", NotesOptions(uncommented=True)) == 2
     with pymupdf.open(tmp_path / "b-out.pdf") as doc:
-        assert "1. “line 0 of page 1”\n2. said" in doc[1].get_text()
+        assert "\n1\n“line 0 of page 1”\n2\nsaid\n" in doc[1].get_text()
 
 
 def test_shapes_and_sticky_notes_count_but_free_text_and_blanks_do_not(tmp_path: Path):
@@ -89,7 +89,7 @@ def test_shapes_and_sticky_notes_count_but_free_text_and_blanks_do_not(tmp_path:
         doc.save(src)
     assert footnote_comments(src, tmp_path / "out.pdf") == 2
     with pymupdf.open(tmp_path / "out.pdf") as doc:
-        assert "1. sticky" in doc[1].get_text() and "2. boxed" in doc[1].get_text()
+        assert "\n1\nsticky\n2\nboxed\n" in doc[1].get_text()
 
 
 def test_replies_fold_under_their_parent(tmp_path: Path):
@@ -111,21 +111,21 @@ def test_replies_fold_under_their_parent(tmp_path: Path):
     assert footnote_comments(src, out, md=md) == 1
     with pymupdf.open(out) as doc:
         text = doc[1].get_text()
-        assert "1. root" in text and "↳ Bob: I disagree" in text and "↳ Ann: fair" in text
+        assert "\n1\nroot\n" in text and "↳ Bob: I disagree" in text and "↳ Ann: fair" in text
     assert md.read_text(encoding="utf-8") == (
         "# Notes for a.pdf\n\n## Page 1\n\n1. root\n    - ↳ Bob: I disagree\n    - ↳ Ann: fair\n"
     )
 
 
-@pytest.mark.parametrize("placement, pages, heading", [("end", 3, "Page 1"), ("only", 1, "Page 1")])
-def test_notes_at_the_end_or_alone(tmp_path: Path, placement, pages, heading):
+@pytest.mark.parametrize("placement, pages, title", [("end", 3, "Notes"), ("only", 1, "Notes for a.pdf")])
+def test_notes_at_the_end_or_alone(tmp_path: Path, placement, pages, title):
     src = _commented(tmp_path / "a.pdf", {0: ["one"], 1: ["two"]}, pages=2)
     out = tmp_path / "out.pdf"
     footnote_comments(src, out, NotesOptions(placement=placement))
     with pymupdf.open(out) as doc:
         assert doc.page_count == pages
         last = doc[-1].get_text()
-        assert last.startswith(heading) and "1. one" in last and "Page 2\n2. two" in last
+        assert last.startswith(title) and "\nPage 1\n1\none\n" in last and "Page 2\n2\ntwo\n" in last
         if placement == "end":
             assert doc.get_toc() == [[1, "Notes", 3]] and doc[0].get_links()[0]["page"] == 2
         else:
@@ -146,3 +146,16 @@ def test_bad_option_and_no_comments_are_errors(make_pdf, tmp_path: Path):
         footnote_comments(make_pdf("a.pdf", 1), tmp_path / "out.pdf")
     with pytest.raises(ValueError, match="unknown placement"):
         footnote_comments(make_pdf("b.pdf", 1), tmp_path / "out.pdf", NotesOptions(placement="sideways"))
+
+
+def test_marker_size_colour_and_circle(tmp_path: Path):
+    src = _commented(tmp_path / "a.pdf", {0: ["one", "two"]}, pages=1)
+    out = tmp_path / "out.pdf"
+    footnote_comments(src, out, NotesOptions(mark_size=12, mark_color=(0, 0, 1), circle=True))
+    with pymupdf.open(out) as doc:
+        spans = [s for b in doc[0].get_text("dict")["blocks"] for l in b["lines"] for s in l["spans"] if s["text"] == "1"]
+        assert spans and spans[0]["size"] == 12 and spans[0]["color"] == 0x0000FF
+        discs = [d for d in doc[0].get_drawings() if d["fill"] and abs(d["fill"][0] - 0.85) < 0.01]
+        assert len(discs) == 2 and discs[0]["rect"].y1 <= discs[1]["rect"].y0  # one per number, stacked, not overlapping
+        box = doc[0].get_links()[0]["from"]
+        assert abs(box.width - box.height) < 0.01 and box.width == discs[0]["rect"].width  # link covers the disc

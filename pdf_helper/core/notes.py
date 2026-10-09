@@ -2,6 +2,7 @@
 
 import html
 import io
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,8 +19,8 @@ MARGIN = 36  # points around the notes page text
 MARK_SIZE = 7
 MARK_COLOR = (0.8, 0, 0)
 MARK_INSET = 14  # points in from the page edge; a second margin mark on the same line stacks below the first
-CSS = ("body {font-family: sans-serif; font-size: 10pt} h2 {font-size: 13pt} p {margin: 0 0 6pt 0} "
-       "p.reply {margin-left: 14pt}")
+INDENT = 12  # notes page: quote, comment and author sit in from the number; replies twice that
+DISC = (0.85, 0.85, 0.85)  # the optional circle behind a number
 PLACEMENTS = ("after", "end", "only")
 MARKERS = ("right", "left", "inline")
 
@@ -33,6 +34,9 @@ class NotesOptions:
     placement: str = "after"  # notes "after" each page, all at the "end", or notes "only" with no source pages
     marker: str = "right"  # number in the "right" or "left" margin, or "inline" after the phrase
     export: bool = False  # also write a Markdown file of the notes
+    mark_size: float = MARK_SIZE  # points, for the number on the page
+    mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
+    circle: bool = False  # light grey disc behind the number on the page
 
 
 @dataclass
@@ -108,41 +112,67 @@ def _collect(page: pymupdf.Page, opts: NotesOptions) -> list[Note]:
 
 def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
     """Write each note's number on the page and remember where."""
-    last_y = -MARK_SIZE
+    last_y = -opts.mark_size
     for note in notes:
-        if opts.marker == "inline":
-            at = note.end + (1, 5)
-        else:
-            x = page.rect.x1 - MARK_INSET if opts.marker == "right" else page.rect.x0 + 6
-            last_y = max(note.start.y + MARK_SIZE, last_y + MARK_SIZE)
-            at = pymupdf.Point(x, last_y)
         label = str(note.n)
-        page.insert_text(at, label, fontsize=MARK_SIZE, fontname="hebo", color=MARK_COLOR)
-        width = pymupdf.get_text_length(label, fontname="hebo", fontsize=MARK_SIZE)
-        note.mark = pymupdf.Rect(at.x, at.y - MARK_SIZE, at.x + width, at.y + 2)
+        size = opts.mark_size
+        width = pymupdf.get_text_length(label, fontname="hebo", fontsize=size)
+        radius = max(width, size) / 2 + 2 if opts.circle else 0
+        if opts.marker == "inline":
+            at = note.end + (1 + radius - width / 2 if radius else 1, size * 0.7)
+        else:
+            x = page.rect.x1 - max(MARK_INSET, width + 4, radius * 2) if opts.marker == "right" else page.rect.x0 + 6
+            step = radius * 2 + 2 if radius else size
+            last_y = max(note.start.y + size, last_y + step)
+            at = pymupdf.Point(x, last_y)
+        note.mark = pymupdf.Rect(at.x, at.y - size, at.x + width, at.y + 2)
+        if radius:
+            center = pymupdf.Point(at.x + width / 2, at.y - size * 0.35)
+            page.draw_circle(center, radius, color=None, fill=DISC)
+            note.mark = pymupdf.Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius)
+        page.insert_text(at, label, fontsize=size, fontname="hebo", color=opts.mark_color)
+
+
+def _css(opts: NotesOptions) -> str:
+    rgb = "#" + "".join(f"{round(c * 255):02x}" for c in opts.mark_color)
+    return (
+        "body {font-family: sans-serif; font-size: 10pt; color: #222} "
+        "h1 {font-size: 18pt; margin: 0 0 14pt 0} "
+        "h2 {font-size: 14pt; margin: 0 0 8pt 0; padding-bottom: 3pt; border-bottom: 0.6pt solid #999} "
+        "p {margin: 0} "
+        f"p.num {{font-size: 11pt; font-weight: bold; color: {rgb}; margin: 10pt 0 2pt 0}} "
+        f"p.quote {{font-style: italic; color: #555; margin: 0 0 3pt {INDENT}pt}} "
+        f"p.comment {{margin: 0 0 0 {INDENT}pt}} "
+        f"p.by {{font-size: 8.5pt; color: #777; margin: 2pt 0 0 {INDENT}pt}} "
+        f"p.reply {{font-size: 9.5pt; margin: 3pt 0 0 {INDENT * 2}pt}}"
+    )
+
+
+def _esc(text: str) -> str:
+    return html.escape(text).replace("\n", "<br>")
 
 
 def _item_html(note: Note, opts: NotesOptions) -> str:
-    def esc(text: str) -> str:
-        return html.escape(text).replace("\n", "<br>")
-
-    text = esc(note.comment)
+    out = f'<p class="num">{note.n}</p>'
     if note.quote:
-        quoted = f"<i>“{esc(note.quote)}”</i>"
-        text = f"{quoted} — {text}" if text else quoted
+        out += f'<p class="quote">\u201c{_esc(note.quote)}\u201d</p>'
+    if note.comment:
+        out += f'<p class="comment">{_esc(note.comment)}</p>'
     if opts.authors and note.author:
-        text += f" — {esc(note.author)}"
-    out = f"<p><b>{note.n}.</b> {text}</p>"
+        out += f'<p class="by">\u2014 {_esc(note.author)}</p>'
     for author, reply in note.replies:
-        out += f'<p class="reply">&#8627; {f"<b>{esc(author)}:</b> " if author else ""}{esc(reply)}</p>'
+        out += f'<p class="reply">&#8627; {f"<b>{_esc(author)}:</b> " if author else ""}{_esc(reply)}</p>'
     return out
 
 
-def _notes_pages(size: pymupdf.Rect, sections: list[tuple[str, list[Note]]], opts: NotesOptions) -> pymupdf.Document:
+def _notes_pages(
+    size: pymupdf.Rect, sections: list[tuple[str, list[Note]]], opts: NotesOptions, title: str = "",
+) -> pymupdf.Document:
     """Pages of ``size`` holding each heading and its notes, as many pages as the text needs."""
-    body = "".join(f"<h2>{html.escape(heading)}</h2>" + "".join(_item_html(n, opts) for n in notes)
-                   for heading, notes in sections)
-    story = pymupdf.Story(html=body, user_css=CSS)
+    body = f"<h1>{html.escape(title)}</h1>" if title else ""
+    body += "".join(f"<h2>{html.escape(heading)}</h2>" + "".join(_item_html(n, opts) for n in notes)
+                    for heading, notes in sections)
+    story = pymupdf.Story(html=body, user_css=_css(opts))
     buf = io.BytesIO()
     writer = pymupdf.DocumentWriter(buf)
     more = True
@@ -157,12 +187,15 @@ def _notes_pages(size: pymupdf.Rect, sections: list[tuple[str, list[Note]]], opt
 
 def _link(doc: pymupdf.Document, notes: list[Note], source: dict[int, int], first: int, count: int) -> None:
     """Marker -> its line on a notes page, and the note's number -> back to the source page."""
-    pages = [(i, doc[i].get_text("words")) for i in range(first, first + count)]
+    pages = []
+    for i in range(first, first + count):
+        words = doc[i].get_text("words")
+        per_line = Counter((w[5], w[6]) for w in words)
+        pages.append((i, [w for w in words if per_line[(w[5], w[6])] == 1 and w[0] < MARGIN + 20]))  # alone on its line
     for note in notes:
-        label = f"{note.n}."
-        # the number is the first word of its line, at the margin plus the body padding Story adds
-        hit = next(((i, w) for i, words in pages for w in words if w[4] == label and w[7] == 0 and w[0] < MARGIN + 20), None)
-        if hit is None:  # pragma: no cover - Story always starts the item with its number
+        label = str(note.n)
+        hit = next(((i, w) for i, words in pages for w in words if w[4] == label), None)
+        if hit is None:  # pragma: no cover - Story always writes the number on its own line
             continue
         i, word = hit
         line = pymupdf.Rect(word[:4])
@@ -219,7 +252,8 @@ def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(),
         if md is not None:
             md.write_text(notes_markdown(src.name, all_notes, opts), encoding="utf-8")
         if opts.placement == "only":
-            with _notes_pages(doc[0].rect, [(f"Page {p + 1}", ns) for p, ns in by_page.items()], opts) as only:
+            sections = [(f"Page {p + 1}", ns) for p, ns in by_page.items()]
+            with _notes_pages(doc[0].rect, sections, opts, title=f"Notes for {src.name}") as only:
                 only.save(out)
             return n
         if opts.bake:
@@ -238,7 +272,8 @@ def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(),
         else:
             source = {p: p for p in by_page}
             first = doc.page_count
-            with _notes_pages(doc[0].rect, [(f"Page {p + 1}", ns) for p, ns in by_page.items()], opts) as pages:
+            sections = [(f"Page {p + 1}", ns) for p, ns in by_page.items()]
+            with _notes_pages(doc[0].rect, sections, opts, title="Notes") as pages:
                 doc.insert_pdf(pages)
                 blocks.append((all_notes, first, pages.page_count, "Notes"))
         for notes, first, count, _ in blocks:
