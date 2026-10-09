@@ -444,3 +444,31 @@ def test_ask_options(qapp, monkeypatch):
     assert dialogs.ask_options(None, "t", fields) == {"Loud": True, "Size": "M", "Fast": True}
     monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
     assert dialogs.ask_options(None, "t", fields) is None
+
+
+def test_ask_options_colour_presets_and_picker(qapp, monkeypatch):
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QColorDialog, QComboBox
+
+    fields = {"Ink": {"Red": "#cc0000", "Blue": "#0000ff"}}
+
+    def pick_preset(self):
+        self.findChildren(QComboBox)[0].setCurrentIndex(1)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", pick_preset)
+    assert dialogs.ask_options(None, "t", fields) == {"Ink": "#0000ff"}
+
+    picked = [QColor("#123456"), QColor()]  # a choice, then a cancelled dialog
+
+    def pick_custom(self):
+        combo = self.findChildren(QComboBox)[0]
+        combo.activated.emit(1)  # a preset: remembered as the fallback
+        combo.activated.emit(combo.count() - 1)  # "Pick colour..." -> custom colour inserted and selected
+        assert combo.currentText() == "Custom (#123456)"
+        combo.activated.emit(combo.count() - 1)  # cancelled -> stays on the custom colour
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QColorDialog, "getColor", staticmethod(lambda *a, **k: picked.pop(0)))
+    monkeypatch.setattr(QDialog, "exec", pick_custom)
+    assert dialogs.ask_options(None, "t", fields) == {"Ink": "#123456"}

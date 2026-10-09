@@ -586,20 +586,22 @@ def _highlighted(make_pdf, path: Path) -> Path:
 
 def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = _highlighted(make_pdf, tmp_path / "a.pdf")
-    answers = {k: v[0] if isinstance(v, list) else v for k, v in footnotes.FIELDS.items()}
+    answers = {k: v[0] if isinstance(v, list) else next(iter(v.values())) if isinstance(v, dict) else v
+               for k, v in footnotes.FIELDS.items()}
     answers["Each note holds"] = "Quote the highlight, then the comment"
     answers["Notes go"] = "At the end"
     answers["Number sits"] = "Left margin"
     answers["Also write <name>-notes.md"] = True
     answers["Number size"] = "Large (12 pt)"
-    answers["Number colour"] = "Blue"
-    answers["Number in a grey circle"] = True
+    answers["Number colour"] = "#000000"
+    answers["Number in a disc"] = True
+    answers["Disc colour"] = "#ffffff"
     monkeypatch.setattr(footnotes, "ask_options", lambda *a: answers)
     monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path)
     ctx = FeatureContext([pdf], log)
     params = footnotes.FEATURE.prepare(ctx)
     expected = NotesOptions(
-        quote=True, placement="end", marker="left", export=True, mark_size=12, mark_color=(0, 0.3, 0.8), circle=True,
+        quote=True, placement="end", marker="left", export=True, mark_size=12, mark_color=(0, 0, 0), disc=(1, 1, 1),
     )
     assert params == (expected, tmp_path)
     footnotes.FEATURE.run(ctx, params)
@@ -617,7 +619,8 @@ def test_footnotes_run_without_export(make_pdf, tmp_path: Path, log):
 
 @pytest.mark.parametrize("answered, folder", [(False, True), (True, False)])
 def test_footnotes_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answered, folder):
-    defaults = {k: v[0] if isinstance(v, list) else v for k, v in footnotes.FIELDS.items()}
+    defaults = {k: v[0] if isinstance(v, list) else next(iter(v.values())) if isinstance(v, dict) else v
+                for k, v in footnotes.FIELDS.items()}
     monkeypatch.setattr(footnotes, "ask_options", lambda *a: defaults if answered else None)
     monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path if folder else None)
     assert footnotes.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None

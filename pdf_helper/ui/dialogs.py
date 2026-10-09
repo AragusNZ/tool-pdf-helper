@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Callable
 
+from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
+    QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
 )
 
 from pdf_helper.core.pages import parse_page_spec
@@ -99,8 +100,42 @@ def ask_fields(parent: QWidget | None, title: str, fields: dict[str, str]) -> di
     return {label: edit.text() for label, edit in edits.items()}
 
 
-def ask_options(parent: QWidget | None, title: str, fields: dict[str, bool | list[str]]) -> dict[str, bool | str] | None:
-    """A checkbox per bool field, a drop-down per list field with its first item preselected. None when cancelled."""
+Presets = dict[str, str]  # colour name -> "#rrggbb"; a field of this type gets swatches plus a colour picker
+
+
+def _swatch(hex_color: str) -> QIcon:
+    pix = QPixmap(14, 14)
+    pix.fill(QColor(hex_color))
+    return QIcon(pix)
+
+
+def _color_combo(presets: Presets) -> QComboBox:
+    """Preset swatches, then "Pick colour..." which opens the system colour dialog and adds the result."""
+    combo = QComboBox()
+    for name, hex_color in presets.items():
+        combo.addItem(_swatch(hex_color), name, hex_color)
+    combo.addItem("Pick colour...", None)
+    previous = [0]
+
+    def chosen(index: int) -> None:
+        if combo.itemData(index) is not None:
+            previous[0] = index
+            return
+        color = QColorDialog.getColor(QColor(combo.itemData(previous[0])), combo, "Pick colour")
+        if color.isValid():
+            combo.insertItem(index, _swatch(color.name()), f"Custom ({color.name()})", color.name())
+            previous[0] = index
+        combo.setCurrentIndex(previous[0])
+
+    combo.activated.connect(chosen)
+    return combo
+
+
+def ask_options(
+    parent: QWidget | None, title: str, fields: dict[str, bool | list[str] | Presets],
+) -> dict[str, bool | str] | None:
+    """One row per field: a checkbox for a bool, a drop-down for a list (first item preselected), swatches plus a
+    colour picker for a ``Presets`` dict. Returns checked / chosen text / chosen "#rrggbb"; None when cancelled."""
     dialog = QDialog(parent)
     dialog.setWindowTitle(title)
     form = QFormLayout(dialog)
@@ -111,15 +146,21 @@ def ask_options(parent: QWidget | None, title: str, fields: dict[str, bool | lis
             box.setChecked(value)
             widgets[label] = box
             form.addRow(label, box)
+            continue
+        if isinstance(value, dict):
+            combo = _color_combo(value)
         else:
             combo = QComboBox()
             combo.addItems(value)
-            widgets[label] = combo
-            form.addRow(f"{label}:", combo)
+        widgets[label] = combo
+        form.addRow(f"{label}:", combo)
     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
     form.addRow(buttons)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return None
-    return {label: w.isChecked() if isinstance(w, QCheckBox) else w.currentText() for label, w in widgets.items()}
+    return {
+        label: w.isChecked() if isinstance(w, QCheckBox) else (w.currentData() or w.currentText())
+        for label, w in widgets.items()
+    }

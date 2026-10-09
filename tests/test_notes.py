@@ -151,7 +151,7 @@ def test_bad_option_and_no_comments_are_errors(make_pdf, tmp_path: Path):
 def test_marker_size_colour_and_circle(tmp_path: Path):
     src = _commented(tmp_path / "a.pdf", {0: ["one", "two"]}, pages=1)
     out = tmp_path / "out.pdf"
-    footnote_comments(src, out, NotesOptions(mark_size=12, mark_color=(0, 0, 1), circle=True))
+    footnote_comments(src, out, NotesOptions(mark_size=12, mark_color=(0, 0, 1), disc=(0.85, 0.85, 0.85)))
     with pymupdf.open(out) as doc:
         spans = [s for b in doc[0].get_text("dict")["blocks"] for l in b["lines"] for s in l["spans"] if s["text"] == "1"]
         assert spans and spans[0]["size"] == 12 and spans[0]["color"] == 0x0000FF

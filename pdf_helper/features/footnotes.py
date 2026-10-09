@@ -10,7 +10,8 @@ from pdf_helper.ui.dialogs import ask_options, choose_directory
 PLACEMENT = {"After each page": "after", "At the end": "end", "Notes only, no source pages": "only"}
 MARKER = {"Right margin": "right", "Left margin": "left", "After the phrase": "inline"}
 SIZE = {"Small (7 pt)": 7, "Medium (9 pt)": 9, "Large (12 pt)": 12}
-COLOUR = {"Red": (0.8, 0, 0), "Blue": (0, 0.3, 0.8), "Green": (0, 0.5, 0), "Orange": (0.9, 0.45, 0), "Black": (0, 0, 0)}
+COLOUR = {"Red": "#cc0000", "Blue": "#004dcc", "Green": "#008000", "Orange": "#e67300", "Black": "#000000"}
+DISC = {"Light grey": "#d9d9d9", "Pale yellow": "#fff3b0", "Pale blue": "#dbe9ff", "White": "#ffffff"}
 FIELDS: dict[str, bool | list[str]] = {
     "Each note holds": ["Comment only", "Quote the highlight, then the comment"],
     "Include highlights that have no comment": False,
@@ -19,10 +20,16 @@ FIELDS: dict[str, bool | list[str]] = {
     "Notes go": list(PLACEMENT),
     "Number sits": list(MARKER),
     "Number size": list(SIZE),
-    "Number colour": list(COLOUR),
-    "Number in a grey circle": False,
+    "Number colour": COLOUR,
+    "Number in a disc": False,
+    "Disc colour": DISC,
     "Also write <name>-notes.md": False,
 }
+
+
+def _rgb(hex_color: str) -> tuple[float, float, float]:
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return r, g, b
 
 
 def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
@@ -41,8 +48,8 @@ def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
         marker=MARKER[str(answers["Number sits"])],
         export=bool(answers["Also write <name>-notes.md"]),
         mark_size=SIZE[str(answers["Number size"])],
-        mark_color=COLOUR[str(answers["Number colour"])],
-        circle=bool(answers["Number in a grey circle"]),
+        mark_color=_rgb(str(answers["Number colour"])),
+        disc=_rgb(str(answers["Disc colour"])) if answers["Number in a disc"] else None,
     )
     return opts, out_dir
 

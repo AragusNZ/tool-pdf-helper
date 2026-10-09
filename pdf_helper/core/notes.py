@@ -20,7 +20,7 @@ MARK_SIZE = 7
 MARK_COLOR = (0.8, 0, 0)
 MARK_INSET = 14  # points in from the page edge; a second margin mark on the same line stacks below the first
 INDENT = 12  # notes page: quote, comment and author sit in from the number; replies twice that
-DISC = (0.85, 0.85, 0.85)  # the optional circle behind a number
+DISC = (0.85, 0.85, 0.85)  # light grey, the usual disc
 PLACEMENTS = ("after", "end", "only")
 MARKERS = ("right", "left", "inline")
 
@@ -36,7 +36,7 @@ class NotesOptions:
     export: bool = False  # also write a Markdown file of the notes
     mark_size: float = MARK_SIZE  # points, for the number on the page
     mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
-    circle: bool = False  # light grey disc behind the number on the page
+    disc: tuple[float, float, float] | None = None  # fill of a disc behind the number on the page; None for no disc
 
 
 @dataclass
@@ -117,7 +117,7 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         label = str(note.n)
         size = opts.mark_size
         width = pymupdf.get_text_length(label, fontname="hebo", fontsize=size)
-        radius = max(width, size) / 2 + 2 if opts.circle else 0
+        radius = max(width, size) / 2 + 2 if opts.disc else 0
         if opts.marker == "inline":
             at = note.end + (1 + radius - width / 2 if radius else 1, size * 0.7)
         else:
@@ -128,7 +128,7 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         note.mark = pymupdf.Rect(at.x, at.y - size, at.x + width, at.y + 2)
         if radius:
             center = pymupdf.Point(at.x + width / 2, at.y - size * 0.35)
-            page.draw_circle(center, radius, color=None, fill=DISC)
+            page.draw_circle(center, radius, color=None, fill=opts.disc)
             note.mark = pymupdf.Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius)
         page.insert_text(at, label, fontsize=size, fontname="hebo", color=opts.mark_color)
 
