@@ -6,10 +6,11 @@ import pymupdf
 import pytest
 
 from pdf_helper.core.convert import AUTO, IMAGE_SIZE, MATCH
+from pdf_helper.core.notes import NotesOptions
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
     FEATURES, add_image, add_text, compress, create_pdf, delete_pages, extract_content, extract_pages, find_text,
-    grayscale, merge, metadata, nup, page_numbers, protect, redact, replace_text, resize, rotate, split, split_bookmarks,
+    footnotes, grayscale, merge, metadata, nup, page_numbers, protect, redact, replace_text, resize, rotate, split, split_bookmarks,
     tables, to_docx, to_images, unlock, watermark,
 )
 from pdf_helper.features.base import FeatureContext, each_file
@@ -18,7 +19,7 @@ from pdf_helper.ui import dialogs
 
 def test_registry_labels_unique():
     labels = [f.label for f in FEATURES]
-    assert len(labels) == len(set(labels)) == 25
+    assert len(labels) == len(set(labels)) == 26
 
 
 def test_enabled_for_gating(make_pdf, make_png, tmp_path: Path):
@@ -573,6 +574,47 @@ def test_find_text_reports_a_miss(make_pdf, log):
     find_text.FEATURE.run(FeatureContext([make_pdf("a.pdf", 1)], log), ("sprocket", False))
     assert log.lines[-1] == "a.pdf: not found"
 
+
+# --- footnotes --------------------------------------------------------------
+def _highlighted(make_pdf, path: Path) -> Path:
+    with pymupdf.open(make_pdf("plain.pdf", 1)) as doc:
+        page = doc[0]
+        page.add_highlight_annot(pymupdf.Rect(72, 60, 200, 76)).set_info(content="hm")
+        doc.save(path)
+    return path
+
+
+def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
+    pdf = _highlighted(make_pdf, tmp_path / "a.pdf")
+    answers = {k: v[0] if isinstance(v, list) else v for k, v in footnotes.FIELDS.items()}
+    answers["Each note holds"] = "Quote the highlight, then the comment"
+    answers["Notes go"] = "At the end"
+    answers["Number sits"] = "Left margin"
+    answers["Also write <name>-notes.md"] = True
+    monkeypatch.setattr(footnotes, "ask_options", lambda *a: answers)
+    monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path)
+    ctx = FeatureContext([pdf], log)
+    params = footnotes.FEATURE.prepare(ctx)
+    assert params == (NotesOptions(quote=True, placement="end", marker="left", export=True), tmp_path)
+    footnotes.FEATURE.run(ctx, params)
+    assert page_count(tmp_path / "a-notes.pdf") == 2 and (tmp_path / "a-notes.md").exists()
+    assert ctx.outputs == [tmp_path / "a-notes.pdf", tmp_path / "a-notes.md"]
+    assert log.lines[-1].endswith("a-notes.pdf and a-notes.md") and log.lines[-1].startswith("a.pdf: 1 note(s) -> ")
+
+
+def test_footnotes_run_without_export(make_pdf, tmp_path: Path, log):
+    pdf = _highlighted(make_pdf, tmp_path / "a.pdf")
+    ctx = FeatureContext([pdf], log)
+    footnotes.FEATURE.run(ctx, (NotesOptions(), tmp_path))
+    assert ctx.outputs == [tmp_path / "a-notes.pdf"] and log.lines[-1].endswith("a-notes.pdf")
+
+
+@pytest.mark.parametrize("answered, folder", [(False, True), (True, False)])
+def test_footnotes_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, answered, folder):
+    defaults = {k: v[0] if isinstance(v, list) else v for k, v in footnotes.FIELDS.items()}
+    monkeypatch.setattr(footnotes, "ask_options", lambda *a: defaults if answered else None)
+    monkeypatch.setattr(footnotes, "choose_directory", lambda *a: tmp_path if folder else None)
+    assert footnotes.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 def test_find_text_counts_repeats(tmp_path: Path, log):
     src = tmp_path / "r.pdf"

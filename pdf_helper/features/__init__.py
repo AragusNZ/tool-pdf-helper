@@ -4,7 +4,7 @@ Order is the button order, and the ``group`` of each feature is its tab, in firs
 """
 
 from pdf_helper.features import (
-    add_image, add_text, compress, create_pdf, delete_pages, extract_content, extract_pages, find_text, grayscale,
+    add_image, add_text, compress, create_pdf, delete_pages, extract_content, extract_pages, find_text, footnotes, grayscale,
     merge, metadata, nup, page_numbers, protect, redact, replace_text, resize, rotate, split, split_bookmarks, tables,
     to_docx, to_images, unlock, watermark,
 )
@@ -32,6 +32,7 @@ FEATURES = [
     replace_text.FEATURE,
     redact.FEATURE,
     find_text.FEATURE,
+    footnotes.FEATURE,
     # Output
     compress.FEATURE,
     grayscale.FEATURE,

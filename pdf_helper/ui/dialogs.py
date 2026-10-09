@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
 )
 
 from pdf_helper.core.pages import parse_page_spec
@@ -97,3 +97,29 @@ def ask_fields(parent: QWidget | None, title: str, fields: dict[str, str]) -> di
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return None
     return {label: edit.text() for label, edit in edits.items()}
+
+
+def ask_options(parent: QWidget | None, title: str, fields: dict[str, bool | list[str]]) -> dict[str, bool | str] | None:
+    """A checkbox per bool field, a drop-down per list field with its first item preselected. None when cancelled."""
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(title)
+    form = QFormLayout(dialog)
+    widgets: dict[str, QCheckBox | QComboBox] = {}
+    for label, value in fields.items():
+        if isinstance(value, bool):
+            box = QCheckBox()
+            box.setChecked(value)
+            widgets[label] = box
+            form.addRow(label, box)
+        else:
+            combo = QComboBox()
+            combo.addItems(value)
+            widgets[label] = combo
+            form.addRow(f"{label}:", combo)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    form.addRow(buttons)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return {label: w.isChecked() if isinstance(w, QCheckBox) else w.currentText() for label, w in widgets.items()}

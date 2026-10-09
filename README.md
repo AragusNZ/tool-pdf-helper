@@ -77,6 +77,13 @@ finishes, **Open output folder** under the log opens where the files went.
   `<name>-redacted.pdf`.
 - **Find text** – lists which pages of which queued PDFs hold a phrase, in the log pane. Writes nothing, and matches
   inside words the same way Replace text does.
+- **Footnote comments** – turns reviewer comments into footnotes. Every annotation with a comment (highlight,
+  underline, strike-out, sticky note, box, circle, line, ink) gets a small red number, and the comments are listed
+  on notes pages, numbered through the whole file. Numbers link to their note and back, the notes pages are
+  bookmarked, and replies sit under the comment they answer. One dialog picks: quote the highlighted text, list
+  highlights that have no comment, show the reviewer's name, keep or flatten the highlights, notes after each page
+  / at the end / on their own, number in the right margin / left margin / after the phrase, and an extra
+  `<name>-notes.md`. Writes `<name>-notes.pdf`.
 
 ### Output
 

@@ -5,6 +5,17 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Added
+
+- **Footnote comments** on the Text tab: every annotation that carries a comment (highlight, underline,
+  strike-out, sticky note, box, circle, line, ink) gets a small red number, and the comments are listed on notes
+  pages. Numbers run through the whole file; each number links to its note and back, and the notes pages are
+  bookmarked. Replies are listed under the comment they answer. One dialog picks the options: quote the
+  highlighted text or not, list highlights that have no comment, show the reviewer's name, keep the highlights
+  as annotations or flatten them into the page, put the notes after each page / at the end / on their own,
+  put the number in the right margin / left margin / after the phrase, and also write `<name>-notes.md`.
+  Writes `<name>-notes.pdf`.
+
 ## [1.2.0] - 2026-09-25
 
 ### Added

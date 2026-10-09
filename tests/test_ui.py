@@ -429,3 +429,18 @@ def test_ask_fields(qapp, monkeypatch):
     assert dialogs.ask_fields(None, "t", {"Title": "T", "Author": ""}) == {"Title": "T", "Author": "Bo"}
     monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
     assert dialogs.ask_fields(None, "t", {"Title": "T"}) is None
+
+
+def test_ask_options(qapp, monkeypatch):
+    from PySide6.QtWidgets import QCheckBox, QComboBox
+
+    def accept(self):
+        self.findChildren(QCheckBox)[0].setChecked(True)
+        self.findChildren(QComboBox)[0].setCurrentIndex(1)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", accept)
+    fields = {"Loud": False, "Size": ["S", "M"], "Fast": True}
+    assert dialogs.ask_options(None, "t", fields) == {"Loud": True, "Size": "M", "Fast": True}
+    monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
+    assert dialogs.ask_options(None, "t", fields) is None

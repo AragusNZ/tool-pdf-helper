@@ -5,6 +5,7 @@ dist/
 __pycache__/
 .pytest_cache/
 .coverage
+._work
 
 # >>> dt agents wire rules (managed -- do not edit) >>>
 /.claude/rules/coding-core
