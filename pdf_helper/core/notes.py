@@ -38,7 +38,7 @@ class NotesOptions:
     mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
     disc: tuple[float, float, float] | None = None  # fill of a disc behind the number on the page; None for no disc
     heading: str = "Notes for"  # notes page heading, followed by "page N"
-    leader: bool = False  # thin line from the highlight's nearest edge to a margin number
+    leader: bool = False  # thin line from the highlight's nearest edge to a margin number, which then sits in a bubble
 
 
 @dataclass
@@ -126,7 +126,8 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         label = str(note.n)
         size = opts.mark_size
         width = pymupdf.get_text_length(label, fontname="hebo", fontsize=size)
-        radius = max(width, size) / 2 + 2 if opts.disc else 0
+        bubble = opts.leader and margin  # outline round the number, closing the leader
+        radius = max(width, size) / 2 + 2 if opts.disc or bubble else 0
         if opts.marker == "inline":
             at = note.end + (1 + radius - width / 2 if radius else 1, size * 0.7)
         elif opts.marker == "start":  # on the highlight, tucked into its top-left corner
@@ -146,7 +147,7 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
             tip = pymupdf.Point(note.mark.x0 - 1 if right else note.mark.x1 + 1, (note.mark.y0 + note.mark.y1) / 2)
             page.draw_line(edge, tip, color=opts.mark_color, width=0.5)
         if radius:
-            page.draw_circle(center, radius, color=None, fill=opts.disc)
+            page.draw_circle(center, radius, color=opts.mark_color if bubble else None, fill=opts.disc, width=0.5)
         page.insert_text(at, label, fontsize=size, fontname="hebo", color=opts.mark_color)
 
 

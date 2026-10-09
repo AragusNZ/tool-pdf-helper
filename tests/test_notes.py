@@ -222,14 +222,17 @@ def test_margin_numbers_follow_page_position_not_reading_order(tmp_path: Path):
 def test_leader_line_joins_highlight_edge_to_number(tmp_path: Path, marker, edge_x):
     src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
     out = tmp_path / "out.pdf"
-    footnote_comments(src, out, NotesOptions(marker=marker, leader=True, disc=(0.85, 0.85, 0.85)))
+    footnote_comments(src, out, NotesOptions(marker=marker, leader=True, mark_color=(0, 0, 1)))
     with pymupdf.open(out) as doc:
         page = doc[0]
         (line,) = [d for d in page.get_drawings() if d["items"][0][0] == "l"]
+        (bubble,) = [d for d in page.get_drawings() if d["type"] == "s" and d["items"][0][0] == "c"]  # not the highlight
         _, p1, p2 = line["items"][0]
         mark = page.get_links()[0]["from"]
         assert abs(p1.x - edge_x) < 0.01 and 90 < p1.y < 104  # leaves the highlight's near edge, mid-line
-        assert abs(p2.x - (mark.x0 - 1 if marker == "right" else mark.x1 + 1)) < 0.01  # arrives at the number
+        assert abs(p2.x - (mark.x0 - 1 if marker == "right" else mark.x1 + 1)) < 0.01  # arrives at the bubble
+        assert line["color"] == bubble["color"] == (0, 0, 1) and bubble["fill"] is None  # same colour, open bubble
+        assert abs(bubble["rect"].width - mark.width) < 0.01  # the link covers the bubble
 
 
 def test_no_leader_for_inline_or_start(tmp_path: Path):

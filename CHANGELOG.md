@@ -59,7 +59,7 @@ All notable changes to this project are documented here, in
   highlighted text or not, list highlights that have no comment, show the reviewer's name, keep the highlights
   as annotations or flatten them into the page, put the notes after each page / at the end / on their own, word the notes heading ("Notes for",
   "Annotations on"...; the page number always follows),
-  put the number in the right margin / left margin / after the phrase / on the highlight's top-left corner, draw a line from the highlight to a margin number, pick its size and colour, give it a disc in a colour
+  put the number in the right margin / left margin / after the phrase / on the highlight's top-left corner, join a margin number to its highlight with a line and a bubble, pick its size and colour, give it a disc in a colour
   of your own (presets or a colour picker for both), and also write `<name>-notes.md`.
   Writes `<name>-notes.pdf`.
 
