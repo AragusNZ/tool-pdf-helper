@@ -617,6 +617,7 @@ def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     answers["Number sits"] = "Left margin"
     answers["Also write <name>-notes.md"] = True
     answers["Number size"] = "Large (12 pt)"
+    answers["Notes heading, before the page number"] = "Comments on"
     answers["Number colour"] = "#000000"
     answers["Number in a disc"] = True
     answers["Disc colour"] = "#ffffff"
@@ -625,7 +626,7 @@ def test_footnotes_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     ctx = FeatureContext([pdf], log)
     params = footnotes.FEATURE.prepare(ctx)
     expected = NotesOptions(
-        quote=True, placement="end", marker="left", export=True, mark_size=12, mark_color=(0, 0, 0), disc=(1, 1, 1),
+        quote=True, placement="end", marker="left", export=True, heading="Comments on", mark_size=12, mark_color=(0, 0, 0), disc=(1, 1, 1),
     )
     assert params == (expected, tmp_path)
     footnotes.FEATURE.run(ctx, params)

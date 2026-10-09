@@ -57,8 +57,9 @@ All notable changes to this project are documented here, in
   pages. Numbers run through the whole file; each number links to its note and back, and the notes pages are
   bookmarked. Replies are listed under the comment they answer. One dialog picks the options: quote the
   highlighted text or not, list highlights that have no comment, show the reviewer's name, keep the highlights
-  as annotations or flatten them into the page, put the notes after each page / at the end / on their own,
-  put the number in the right margin / left margin / after the phrase, pick its size and colour, give it a disc in a colour
+  as annotations or flatten them into the page, put the notes after each page / at the end / on their own, word the notes heading ("Notes for",
+  "Annotations on"...; the page number always follows),
+  put the number in the right margin / left margin / after the phrase / on the highlight's top-left corner, pick its size and colour, give it a disc in a colour
   of your own (presets or a colour picker for both), and also write `<name>-notes.md`.
   Writes `<name>-notes.pdf`.
 

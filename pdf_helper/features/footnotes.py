@@ -8,16 +8,17 @@ from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_fil
 from pdf_helper.ui.dialogs import ask_options, choose_directory
 
 PLACEMENT = {"After each page": "after", "At the end": "end", "Notes only, no source pages": "only"}
-MARKER = {"Right margin": "right", "Left margin": "left", "After the phrase": "inline"}
+MARKER = {"Right margin": "right", "Left margin": "left", "After the phrase": "inline", "On the highlight, top left": "start"}
 SIZE = {"Small (7 pt)": 7, "Medium (9 pt)": 9, "Large (12 pt)": 12}
 COLOUR = {"Red": "#cc0000", "Blue": "#004dcc", "Green": "#008000", "Orange": "#e67300", "Black": "#000000"}
 DISC = {"Light grey": "#d9d9d9", "Pale yellow": "#fff3b0", "Pale blue": "#dbe9ff", "White": "#ffffff"}
-FIELDS: dict[str, bool | list[str]] = {
+FIELDS: dict[str, bool | str | list[str] | dict[str, str]] = {
     "Each note holds": ["Comment only", "Quote the highlight, then the comment"],
     "Include highlights that have no comment": False,
     "Show reviewer name": False,
     "Highlights": ["Keep as annotations", "Flatten into the page"],
     "Notes go": list(PLACEMENT),
+    "Notes heading, before the page number": "Notes for",
     "Number sits": list(MARKER),
     "Number size": list(SIZE),
     "Number colour": COLOUR,
@@ -45,6 +46,7 @@ def prepare(ctx: FeatureContext) -> tuple[NotesOptions, Path] | None:
         authors=bool(answers["Show reviewer name"]),
         bake=answers["Highlights"] != "Keep as annotations",
         placement=PLACEMENT[str(answers["Notes go"])],
+        heading=str(answers["Notes heading, before the page number"]),
         marker=MARKER[str(answers["Number sits"])],
         export=bool(answers["Also write <name>-notes.md"]),
         mark_size=SIZE[str(answers["Number size"])],

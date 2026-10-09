@@ -22,7 +22,7 @@ MARK_INSET = 14  # points in from the page edge; a second margin mark on the sam
 INDENT = 12  # notes page: quote, comment and author sit in from the number; replies twice that
 DISC = (0.85, 0.85, 0.85)  # light grey, the usual disc
 PLACEMENTS = ("after", "end", "only")
-MARKERS = ("right", "left", "inline")
+MARKERS = ("right", "left", "inline", "start")
 
 
 @dataclass(frozen=True)
@@ -32,11 +32,12 @@ class NotesOptions:
     authors: bool = False  # append the reviewer's name to each note
     bake: bool = False  # flatten the annotations into the page
     placement: str = "after"  # notes "after" each page, all at the "end", or notes "only" with no source pages
-    marker: str = "right"  # number in the "right" or "left" margin, or "inline" after the phrase
+    marker: str = "right"  # number in the "right" or "left" margin, "inline" after the phrase, or at the "start" on the highlight
     export: bool = False  # also write a Markdown file of the notes
     mark_size: float = MARK_SIZE  # points, for the number on the page
     mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
     disc: tuple[float, float, float] | None = None  # fill of a disc behind the number on the page; None for no disc
+    heading: str = "Notes for"  # notes page heading, followed by "page N"
 
 
 @dataclass
@@ -120,6 +121,8 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         radius = max(width, size) / 2 + 2 if opts.disc else 0
         if opts.marker == "inline":
             at = note.end + (1 + radius - width / 2 if radius else 1, size * 0.7)
+        elif opts.marker == "start":  # on the highlight, tucked into its top-left corner
+            at = note.start + (radius - width / 2 if radius else 1, radius + size * 0.35 if radius else size * 0.85)
         else:
             x = page.rect.x1 - max(MARK_INSET, width + 4, radius * 2) if opts.marker == "right" else page.rect.x0 + 6
             step = radius * 2 + 2 if radius else size
@@ -206,13 +209,19 @@ def _link(doc: pymupdf.Document, notes: list[Note], source: dict[int, int], firs
                                                 "to": pymupdf.Point(0, max(line.y0 - 20, 0))})
 
 
+def _heading(opts: NotesOptions, page: int) -> str:
+    """``opts.heading`` then "page N"; "Page N" alone when the prefix is blank."""
+    text = f"{opts.heading.strip()} page {page + 1}".strip()
+    return text[0].upper() + text[1:]
+
+
 def notes_markdown(name: str, notes: list[Note], opts: NotesOptions) -> str:
     lines = [f"# Notes for {name}", ""]
     page = None
     for note in notes:
         if note.page != page:
             page = note.page
-            lines += [f"## Page {page + 1}", ""]
+            lines += [f"## {_heading(opts, page)}", ""]
         text = note.comment.replace("\n", " ")
         if note.quote:
             text = f"“{note.quote}” — {text}" if text else f"“{note.quote}”"
@@ -252,7 +261,7 @@ def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(),
         if md is not None:
             md.write_text(notes_markdown(src.name, all_notes, opts), encoding="utf-8")
         if opts.placement == "only":
-            sections = [(f"Page {p + 1}", ns) for p, ns in by_page.items()]
+            sections = [(_heading(opts, p), ns) for p, ns in by_page.items()]
             with _notes_pages(doc[0].rect, sections, opts, title=f"Notes for {src.name}") as only:
                 only.save(out)
             return n
@@ -265,14 +274,14 @@ def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(),
             for p, notes in by_page.items():
                 source[p] = p + added
                 first = p + 1 + added
-                with _notes_pages(doc[source[p]].rect, [(f"Notes for page {p + 1}", notes)], opts) as pages:
+                with _notes_pages(doc[source[p]].rect, [(_heading(opts, p), notes)], opts) as pages:
                     doc.insert_pdf(pages, start_at=first)
                     added += pages.page_count
-                    blocks.append((notes, first, pages.page_count, f"Notes for page {p + 1}"))
+                    blocks.append((notes, first, pages.page_count, _heading(opts, p)))
         else:
             source = {p: p for p in by_page}
             first = doc.page_count
-            sections = [(f"Page {p + 1}", ns) for p, ns in by_page.items()]
+            sections = [(_heading(opts, p), ns) for p, ns in by_page.items()]
             with _notes_pages(doc[0].rect, sections, opts, title="Notes") as pages:
                 doc.insert_pdf(pages)
                 blocks.append((all_notes, first, pages.page_count, "Notes"))

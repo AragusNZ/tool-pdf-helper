@@ -132,15 +132,20 @@ def _color_combo(presets: Presets) -> QComboBox:
 
 
 def ask_options(
-    parent: QWidget | None, title: str, fields: dict[str, bool | list[str] | Presets],
+    parent: QWidget | None, title: str, fields: dict[str, bool | str | list[str] | Presets],
 ) -> dict[str, bool | str] | None:
-    """One row per field: a checkbox for a bool, a drop-down for a list (first item preselected), swatches plus a
-    colour picker for a ``Presets`` dict. Returns checked / chosen text / chosen "#rrggbb"; None when cancelled."""
+    """One row per field: a checkbox for a bool, a line edit for a str, a drop-down for a list (first item
+    preselected), swatches plus a colour picker for a ``Presets`` dict. Returns checked / typed text / chosen text /
+    chosen "#rrggbb"; None when cancelled."""
     dialog = QDialog(parent)
     dialog.setWindowTitle(title)
     form = QFormLayout(dialog)
-    widgets: dict[str, QCheckBox | QComboBox] = {}
+    widgets: dict[str, QCheckBox | QComboBox | QLineEdit] = {}
     for label, value in fields.items():
+        if isinstance(value, str):
+            widgets[label] = QLineEdit(value)
+            form.addRow(f"{label}:", widgets[label])
+            continue
         if isinstance(value, bool):
             box = QCheckBox()
             box.setChecked(value)
@@ -160,7 +165,11 @@ def ask_options(
     form.addRow(buttons)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return None
-    return {
-        label: w.isChecked() if isinstance(w, QCheckBox) else (w.currentData() or w.currentText())
-        for label, w in widgets.items()
-    }
+    def value(w: QCheckBox | QComboBox | QLineEdit) -> bool | str:
+        if isinstance(w, QCheckBox):
+            return w.isChecked()
+        if isinstance(w, QLineEdit):
+            return w.text()
+        return w.currentData() or w.currentText()
+
+    return {label: value(w) for label, w in widgets.items()}

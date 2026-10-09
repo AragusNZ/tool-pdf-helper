@@ -128,7 +128,7 @@ def test_replies_fold_under_their_parent(tmp_path: Path):
         text = doc[1].get_text()
         assert "\n1\nroot\n" in text and "↳ Bob: I disagree" in text and "↳ Ann: fair" in text
     assert md.read_text(encoding="utf-8") == (
-        "# Notes for a.pdf\n\n## Page 1\n\n1. root\n    - ↳ Bob: I disagree\n    - ↳ Ann: fair\n"
+        "# Notes for a.pdf\n\n## Notes for page 1\n\n1. root\n    - ↳ Bob: I disagree\n    - ↳ Ann: fair\n"
     )
 
 
@@ -140,14 +140,14 @@ def test_notes_at_the_end_or_alone(tmp_path: Path, placement, pages, title):
     with pymupdf.open(out) as doc:
         assert doc.page_count == pages
         last = doc[-1].get_text()
-        assert last.startswith(title) and "\nPage 1\n1\none\n" in last and "Page 2\n2\ntwo\n" in last
+        assert last.startswith(title) and "\nNotes for page 1\n1\none\n" in last and "Notes for page 2\n2\ntwo\n" in last
         if placement == "end":
             assert doc.get_toc() == [[1, "Notes", 3]] and doc[0].get_links()[0]["page"] == 2
         else:
             assert not doc[-1].get_links()
 
 
-@pytest.mark.parametrize("marker, check", [("left", lambda r: r.x0 < 20), ("inline", lambda r: 200 < r.x0 < 210)])
+@pytest.mark.parametrize("marker, check", [("left", lambda r: r.x0 < 20), ("inline", lambda r: 200 < r.x0 < 210), ("start", lambda r: 72 < r.x0 < 76 and 86 < r.y0 < 96)])
 def test_marker_position(tmp_path: Path, marker, check):
     src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
     out = tmp_path / "out.pdf"
@@ -174,3 +174,24 @@ def test_marker_size_colour_and_circle(tmp_path: Path):
         assert len(discs) == 2 and discs[0]["rect"].y1 <= discs[1]["rect"].y0  # one per number, stacked, not overlapping
         box = doc[0].get_links()[0]["from"]
         assert abs(box.width - box.height) < 0.01 and box.width == discs[0]["rect"].width  # link covers the disc
+
+
+@pytest.mark.parametrize("heading, shown", [("Annotations on", "Annotations on page 1"), ("  ", "Page 1")])
+def test_heading_prefix(tmp_path: Path, heading, shown):
+    src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
+    out = tmp_path / "out.pdf"
+    footnote_comments(src, out, NotesOptions(heading=heading))
+    with pymupdf.open(out) as doc:
+        assert doc[1].get_text().startswith(shown) and doc.get_toc() == [[1, shown, 2]]
+
+
+def test_start_marker_sits_inside_the_highlight_with_its_disc(tmp_path: Path):
+    src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
+    out = tmp_path / "out.pdf"
+    footnote_comments(src, out, NotesOptions(marker="start", disc=(0.85, 0.85, 0.85)))
+    with pymupdf.open(out) as doc:
+        page = doc[0]
+        (annot,) = page.annots()
+        disc = page.get_links()[0]["from"]
+        corner = pymupdf.Point(annot.vertices[0])  # top-left of the highlighted quad, (72, 90) here
+        assert annot.rect.contains(disc.tl) and abs(disc.x0 - corner.x) < 1 and abs(disc.y0 - corner.y) < 1
