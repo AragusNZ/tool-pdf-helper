@@ -1,3 +1,4 @@
 {
-    "type": "python-tool"
+    "type": "python-tool",
+    "shipped": false
 }

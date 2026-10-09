@@ -54,9 +54,8 @@ class Ask(Deny):
     A subclass rather than a field on Deny so every existing construction site is
     untouched and a mistyped decision string cannot exist. `check()` treats it exactly
     like a Deny (first verdict wins); only the two adapters care about the difference.
-    `bare_composer_update` is the one guard that returns it: a bare `composer update` is
-    sometimes exactly right, so the verdict is a redirect the operator can wave through,
-    not a block.
+    No guard returns it today; it stays so a verdict that is a redirect the operator can
+    wave through, not a block, has a type when one is needed again.
     """
 
 
@@ -74,34 +73,35 @@ def write(file_path: str, cwd: str = "", content: str = "") -> Call:
     return Call(kind="write", path=rel.replace(os.sep, "/"), content=content or "", cwd=cwd)
 
 
-# --- shipping status --------------------------------------------------------
+# --- .dev-tools/config.json --------------------------------------------------
 
-def shipping_status(cwd):
-    """Read the repo's SHIPPING_STATUS file.
+def _dev_tools_config(cwd):
+    """The repo's .dev-tools/config.json as a dict; {} when missing, malformed or not an object.
 
-    The file is the single source of truth, in BOTH tools -- for this guard, for the model
-    (the `shipping-status` skill), and for `dt registry sync`, which derives
-    the register's Shipping column from it. There is no marker and no second copy.
-
-    This function needs no portability work and that is the point: it opens one plain file
-    with no tool-specific path in it.
-
-    A MISSING file means Shipped. This fails CLOSED, deliberately: the absent-file case gets
-    the careful regime -- bootstrap migrations frozen -- rather than the permissive one. An
-    unshipped repo states so explicitly; silence is not permission. Anything that is not
-    exactly `Unshipped` reads as Shipped for the same reason: a typo, an empty file, or an
-    unreadable one must not silently unlock the schema.
+    One plain file with no tool-specific path in it, so this needs no portability work.
     """
     try:
-        with open(os.path.join(cwd, "SHIPPING_STATUS"), encoding="utf-8") as fh:
-            if fh.read().strip() == "Unshipped":
-                return "Unshipped"
-    except OSError:
-        pass
-    return "Shipped"
+        with open(os.path.join(cwd, ".dev-tools", "config.json"), encoding="utf-8") as fh:
+            config = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
-# --- project type -----------------------------------------------------------
+def shipping_status(cwd):
+    """The repo's shipping status, from the `shipped` key of .dev-tools/config.json.
+
+    The key is the single source of truth, in BOTH tools -- for this guard, for the model (the
+    `shipping-status` skill, `dt shipping`), and for `dt registry list`, which renders it as the
+    Shipping column. There is no marker and no second copy.
+
+    Only an exact JSON `false` reads as Unshipped. This fails CLOSED, deliberately: a missing
+    file, a missing key, null, the string "false" or anything else gets the careful regime --
+    bootstrap migrations frozen -- rather than the permissive one. An unshipped repo states so
+    explicitly; silence is not permission, and a typo must not silently unlock the schema.
+    """
+    return "Unshipped" if _dev_tools_config(cwd).get("shipped") is False else "Shipped"
+
 
 def dev_tools_type(cwd):
     """The repo's declared project type, from .dev-tools/config.json.
@@ -111,11 +111,7 @@ def dev_tools_type(cwd):
     command that does not apply to it. Anything missing, unreadable or undeclared returns ""
     -- an absent declaration is not a package.
     """
-    try:
-        with open(os.path.join(cwd, ".dev-tools", "config.json"), encoding="utf-8") as fh:
-            declared = json.load(fh).get("type")
-    except (OSError, ValueError, AttributeError):
-        return ""
+    declared = _dev_tools_config(cwd).get("type")
     return declared if isinstance(declared, str) else ""
 
 
@@ -217,6 +213,8 @@ def version_write(call):
     SUCCESS and changes nothing when `## [<ver>]` is already present, so an invented heading
     makes the operator's next real bump skip promotion SILENTLY and strand the notes.
     """
+    if call.kind == "shell":
+        return _version_shell_write(call)
     if call.kind != "write":
         return None
     name = call.path.rsplit("/", 1)[-1]
@@ -235,6 +233,10 @@ def version_write(call):
     else:
         return None
 
+    return _version_write_deny()
+
+
+def _version_write_deny():
     return Deny(
         "Blocked: version numbers are operator-only. `dt patch|minor|major` derives "
         "the next number from VERSION and writes the heading, the date, VERSION and the manifest's "
@@ -243,6 +245,67 @@ def version_write(call):
         "bullets under `## [Unreleased]` and stop; say which command the user should run.",
         rule="release-boundary-version-write",
     )
+
+
+# `VERSION` as a file name: not `APP_VERSION`, not `VERSION.md`.
+_VFILE = r"(?<![\w.-])(?:[\w./~-]*/)?VERSION(?![\w.-])"
+# Writes into VERSION from a shell command, or from a script body the command runs.
+_VERSION_SHELL_WRITES = [re.compile(p, re.M) for p in (
+    r">>?\s*['\"]?" + _VFILE,                                              # > VERSION
+    r"\btee\b(?:\s+-\S+)*\s+['\"]?" + _VFILE,                              # tee [-a] VERSION
+    r"\b(?:sed|gsed|perl)\b(?=[^;&|\n]*\s-[a-zA-Z]*i)[^;&|\n]*" + _VFILE,  # sed -i … VERSION
+    r"\b(?:cp|mv|install|truncate)\b[^;&|\n]*\s['\"]?" + _VFILE + r"['\"]?\s*(?:$|[;&|)])",
+    r"open\(\s*[rbuf]?['\"](?:[^'\"\n]*/)?VERSION['\"]\s*,\s*[rbuf]?['\"][^'\"]*[wax+]",
+    r"VERSION['\"]\s*\)\s*\.write_(?:text|bytes)\(",                       # Path(…).write_text
+    r"(?:file_put_contents|writeFileSync|writeFile)\(\s*[^,\n]*VERSION['\"]",
+)]
+# (file named, release text present) -- in a text that also writes files. Order-free: a heredoc
+# names the file first, `sed -i 's/…/…/' package.json` names it last.
+_RELEASE_TEXT_SHELL = [(re.compile(f), re.compile(t)) for f, t in (
+    (r"CHANGELOG\.md", r"##\s*\[?v?\d+\.\d+\.\d+"),
+    (r"(?:composer|package)\.json", r"\"version\\?\"\s*:\s*\\?\"v?\d+\.\d+\.\d+"),
+)]
+# Gates _RELEASE_TEXT_SHELL so `grep '## \[1.2.0\]' CHANGELOG.md` and `cat package.json` pass.
+_WRITE_HINT = re.compile(
+    r"open\([^)]*['\"][^'\"]*[wa+]['\"]|\.write\(|write_text\(|write_bytes\(|file_put_contents\("
+    r"|writeFileSync\(|writeFile\(|>>?\s*[\w./~'\"-]|\btee\b|\b(?:sed|perl)\b[^;&|\n]*\s-[a-zA-Z]*i"
+)
+# `python3 x.py`, `php x.php`, `node x.js`, `bash x.sh`, … -- the script body is scanned too.
+_SCRIPT_RUN = re.compile(
+    r"\b(?:python3?|php|node|bash|sh|perl|ruby)\s+(?:-\S+\s+)*['\"]?"
+    r"([^\s;&|<>'\"]+\.(?:py|php|js|mjs|cjs|sh|pl|rb))"
+)
+
+
+def _version_shell_write(call):
+    """The shell half of version_write: the same three writes, made through Bash instead of
+    the Write/Edit tools. Without it the file-write half is advisory -- `open('VERSION','w')`
+    in a `python3 script.py` body went straight past it, in two packages, in one session.
+
+    Unlike the file-write half this does not exempt a VERSION that does not exist yet:
+    resolving the target through `cd` chains is guesswork, and scaffolding writes VERSION
+    through `dt`, whose command line names no VERSION write. A script run by relative path
+    resolves against the hook's cwd only; one reached through `cd` is not scanned.
+    """
+    texts = [call.command]
+    for script in _SCRIPT_RUN.findall(call.command):
+        path = os.path.expanduser(script)
+        if not os.path.isabs(path):
+            path = os.path.join(call.cwd, path)
+        try:
+            if os.path.getsize(path) <= 1_000_000:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    texts.append(fh.read())
+        except OSError:
+            pass
+
+    for text in texts:
+        if any(p.search(text) for p in _VERSION_SHELL_WRITES):
+            return _version_write_deny()
+        if _WRITE_HINT.search(text) and any(f.search(text) and t.search(text)
+                                            for f, t in _RELEASE_TEXT_SHELL):
+            return _version_write_deny()
+    return None
 
 
 # --- laravel-core -----------------------------------------------------------
@@ -265,44 +328,6 @@ def bare_runners(call):
             rule="bare-runners",
         )
     return None
-
-
-_COMPOSER_UPDATE = re.compile(r"(^|[;&|]\s*)composer\s+update\b")
-_DT_WORKSPACE = re.compile(r"\bdt\s+workspace(?::\w+)?\b")
-
-
-def bare_composer_update(call):
-    """A bare `composer update` in a workspace package writes no CHANGELOG entry for the bump.
-
-    `dt workspace composer update <pkg>` runs the same composer command, then logs every
-    registered aragusnz dependency whose locked version moved under `## [Unreleased]` >
-    `### Internal`. Run composer directly and nothing records it -- which is how
-    dependency-bump releases ended up with empty version headings.
-
-    Ask, not Deny. `composer update laravel/framework` has nothing to do with workspace
-    dependencies and is a fine thing to run; only the operator knows which this is. A block
-    here would be wrong more often than right.
-
-    Packages only. A host declares `laravel-host` in .dev-tools/config.json and has no
-    `dt workspace` surface at all, so the redirect would name a command it does not have.
-    """
-    if call.kind != "shell":
-        return None
-    if not _COMPOSER_UPDATE.search(call.command):
-        return None
-    # `dt workspace composer update` contains the matched string and is the sanctioned path.
-    if _DT_WORKSPACE.search(call.command):
-        return None
-    if dev_tools_type(call.cwd) != "laravel-package":
-        return None
-    return Ask(
-        "This writes no CHANGELOG entry for the dependency bump. Use "
-        "`dt workspace composer update <package>` from the workspace root -- it runs the "
-        "same update, then logs every aragusnz dependency whose version moved under "
-        "## [Unreleased] > ### Internal. Approve this only if the update targets a "
-        "third-party dependency, where there is nothing to log.",
-        rule="vendor-bump-changelog",
-    )
 
 
 def generated_openapi(call):
@@ -330,15 +355,15 @@ def frozen_bootstrap_migrations(call):
     base = os.path.basename(call.path)
     if not (re.match(r"^\d{4}_", base) and not re.match(r"^20\d{2}_", base)):
         return None
-    # Name the missing file when that is the cause. Absence reads as Shipped, so without
+    # Name the missing key when that is the cause. Absence reads as Shipped, so without
     # this the block looks like a wrong verdict rather than a wrong repo.
-    if not os.path.exists(os.path.join(call.cwd, "SHIPPING_STATUS")):
+    if "shipped" not in _dev_tools_config(call.cwd):
         return Deny(
-            f"Blocked: this repo has no SHIPPING_STATUS file, which reads as Shipped, so "
-            f"bootstrap migrations are frozen. `{base}` is a bootstrap `{{AAAA}}_*` "
-            f"migration. If this repo is pre-production, create a SHIPPING_STATUS file "
-            f"containing `Unshipped`. If it is live, create a dated migration instead. "
-            f"See the `shipping-status` skill.",
+            f"Blocked: this repo has no `shipped` key in .dev-tools/config.json, which reads "
+            f"as Shipped, so bootstrap migrations are frozen. `{base}` is a bootstrap "
+            f"`{{AAAA}}_*` migration. If this repo is pre-production, add `\"shipped\": false` "
+            f"to .dev-tools/config.json (`dt shipping` prints the reading). If it is live, "
+            f"create a dated migration instead. See the `shipping-status` skill.",
             rule="frozen-bootstrap-migrations",
         )
     return Deny(
@@ -437,7 +462,7 @@ def workspace_write(call):
         )
     if re.search(TOOLKIT_RELEASE_RE, call.command):
         return Deny(
-            "Blocked: `dt git version|release|github-release` and the `dt patch|minor|major` "
+            "Blocked: `dt git version|release` and the `dt patch|minor|major` "
             "shorthands are operator-only -- they tag and release a single repo. Say which "
             "command the user should run and stop.",
             rule="release-boundary-toolkit",
@@ -474,35 +499,6 @@ def cross_repo_git(call):
     return None
 
 
-# A register cell holding a version (`1.7.12`) or a shipping status. These are the two
-# generated columns; everything else in the row is hand-maintained.
-GENERATED_CELL = re.compile(r"\|\s*(\d+\.\d+\.\d+|Shipped|Unshipped)\s*\|")
-
-
-def generated_register_columns(call):
-    """Scoped to the two generated columns, not the file.
-
-    Tier, description, migration band and the notes are hand-maintained, and
-    `onboard-package` adds a whole row -- blocking the path outright would break the
-    workspace's own documented procedure.
-    """
-    if call.kind != "write":
-        return None
-    if not re.search(r"(^|/)\.packages-docs/PACKAGES_REGISTER\.md$", call.path):
-        return None
-    if not GENERATED_CELL.search(call.content):
-        return None
-    return Deny(
-        "Blocked: the Version and Shipping columns of PACKAGES_REGISTER.md are "
-        "generated -- `dt registry sync [packages…]` derives them from "
-        "each package's composer.json and SHIPPING_STATUS, and overwrites a hand-edit "
-        "on the next bump. Change the source, or run `dt registry sync`. Onboarding a "
-        "package: leave those two cells as a placeholder and let sync fill them. The "
-        "row's other columns are yours to edit.",
-        rule="generated-register-columns",
-    )
-
-
 # --- global -----------------------------------------------------------------
 # Not a channel guard. Wired once in ~/.claude/settings.json via hooks/rm_scope_guard.py, so
 # it also covers ~ and unwired checkouts -- which is where an unscoped rm does the damage.
@@ -512,11 +508,13 @@ _RUNTIME_EXPANSION = re.compile(r"[$`]")
 
 
 def rm_scope(call):
-    """`rm` is ordinary work inside the project and a disaster outside it.
+    """`rm` is ordinary work inside the project; outside it the operator decides.
 
-    Returns "allow", a Deny, or None -- three states, not the Deny|None contract `check()`
-    expects, so this sits outside GUARD_SETS and gets its own adapter. That is also why
-    ai-agents-lint's plugin/GUARD_SETS parity is untouched: this guard has no channel.
+    Returns "allow" or None -- never a Deny. "allow" when every target resolves inside the
+    project; None for everything else, which falls through to the normal permission prompt.
+    Two states, not the Deny|None contract `check()` expects, so this sits outside GUARD_SETS
+    and gets its own adapter. That is also why ai-agents-lint's plugin/GUARD_SETS parity is
+    untouched: this guard has no channel.
 
     The ALLOW verdict is the load-bearing part. It replaces the blanket `Bash(rm -rf *)` deny
     that used to sit in permissions.deny, and it lives here rather than in permissions.allow
@@ -526,19 +524,16 @@ def rm_scope(call):
 
     ponytail: a token walk, not a shell parser. `rm` is only recognised in command position,
     so `xargs rm`, `find -exec rm`, and `sudo rm` fall through to the prompt rather than being
-    judged; `$VAR` targets are denied rather than resolved. Every unhandled shape lands on
-    "prompt" or "deny", never on "allow". Reach for bashlex only if that ever bites.
+    judged; `$VAR` targets, unparseable quoting, out-of-project targets and the checkout root
+    itself all land on the prompt too. Every unhandled shape lands on "prompt", never on
+    "allow". Reach for bashlex only if that ever bites.
     """
     if call.kind != "shell" or not re.search(r"\brm\b", call.command):
         return None
 
     root = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or call.cwd)
     if root == os.path.sep or root == os.path.realpath(os.path.expanduser("~")):
-        return Deny(
-            f"Blocked: this session is rooted at `{root}`, so there is no project boundary "
-            f"for `rm` to stay inside. Run it yourself if you mean it.",
-            rule="rm-scope",
-        )
+        return None  # no project boundary to be inside of -- prompt
 
     # A project may name sibling checkouts it is allowed to delete inside -- set per project,
     # never globally, so an unwired checkout keeps the plain project boundary.
@@ -551,12 +546,8 @@ def rm_scope(call):
     for line in call.command.splitlines():
         try:
             tokens = shlex.split(line, comments=True)
-        except ValueError as exc:
-            return Deny(
-                f"Blocked: this command contains `rm` and could not be parsed safely "
-                f"({exc}). Split it into simpler commands.",
-                rule="rm-scope",
-            )
+        except ValueError:
+            return None  # cannot parse safely -- prompt
         mode, end_of_flags = "cmd", False
         for token in tokens:
             if token in _SEPARATORS:
@@ -571,14 +562,13 @@ def rm_scope(call):
                     end_of_flags = True
                 elif not end_of_flags and token.startswith("-"):
                     pass
+                elif not _rm_target_inside(token, cwd, roots):
+                    return None
                 else:
-                    verdict = _rm_target(token, cwd, roots)
-                    if verdict:
-                        return verdict
                     targets += 1
 
     # `rm` matched the regex but no target resolved -- an unhandled shape. Fall through to the
-    # normal permission prompt rather than guessing in either direction.
+    # normal permission prompt rather than guessing.
     return "allow" if targets else None
 
 
@@ -590,40 +580,24 @@ def rm_scope(call):
 _REPO_TODO_FILE = re.compile(r"/\.dev-tools/todo/[^/]+\.md$")
 
 
-def _rm_target(token, cwd, roots):
-    """A Deny if this `rm` target sits outside every root in `roots`, else None. realpath, so
-    a symlink out of the project (a path-repository under vendor/, a workspace link under
-    node_modules/) resolves to where it actually points. `roots[0]` is the project itself; any
-    others came from RM_SCOPE_EXTRA_ROOTS. Each root guards its own top level -- naming one as
-    the target is still the whole-checkout mistake, wherever it sits."""
+def _rm_target_inside(token, cwd, roots):
+    """True if this `rm` target sits inside some root in `roots` (or is a repo TODO file).
+    realpath, so a symlink out of the project (a path-repository under vendor/, a workspace
+    link under node_modules/) resolves to where it actually points. `roots[0]` is the project
+    itself; any others came from RM_SCOPE_EXTRA_ROOTS. A root itself is not inside it -- naming
+    the checkout root is the whole-repo mistake, wherever it sits. Runtime expansion (`$VAR`,
+    backticks) cannot be resolved, so it is not inside either."""
     if _RUNTIME_EXPANSION.search(token):
-        return Deny(
-            f"Blocked: `rm` target `{token}` expands at runtime, so its real path cannot be "
-            f"checked against the project boundary. Name the path literally.",
-            rule="rm-scope",
-        )
+        return False
     target = os.path.realpath(os.path.join(cwd, os.path.expanduser(token)))
     if _REPO_TODO_FILE.search(target):
-        return None
-    for root in roots:
-        if target == root:
-            return Deny(
-                f"Blocked: `{token}` resolves to the checkout root itself (`{root}`). That is "
-                f"the whole repo -- name what inside it should go.",
-                rule="rm-scope",
-            )
-        if target.startswith(root + os.sep):
-            return None
-    return Deny(
-        f"Blocked: `{token}` resolves to `{target}`, outside the project (`{roots[0]}`). "
-        f"`rm` is allowed inside the project only -- run it yourself if you mean it.",
-        rule="rm-scope",
-    )
+        return True
+    return any(target.startswith(root + os.sep) for root in roots)
 
 
 # --- stash discipline --------------------------------------------------------
 # In EVERY channel's guard set AND wired globally (~/.claude/settings.json via
-# hooks/stash_guard.py), so unwired checkouts are covered too. Double coverage in a wired
+# hooks/git_guard.py), so unwired checkouts are covered too. Double coverage in a wired
 # project is harmless -- same predicate, same verdict. Unlike rm_scope this returns only
 # Deny|None, which is what makes GUARD_SETS membership safe: check() reads any non-None
 # as a Deny.
@@ -733,6 +707,121 @@ def _stash_named(action, rest):
     return False
 
 
+# --- branch discipline -------------------------------------------------------
+# Same wiring as stash discipline: project-core's set AND the global hooks/git_guard.py, so
+# unwired checkouts are covered. Deny|None only, so GUARD_SETS membership is safe.
+
+_GIT_BRANCH_CMD = re.compile(
+    r"(?:^|[;&|(\n]|\bdo\b|\bthen\b)\s*git\b((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*)"
+    r"\s+(checkout|switch|branch|worktree)\b([^;&|\n]*)"
+)
+_BRANCH_VALUE_FLAGS = {"--contains", "--no-contains", "--merged", "--no-merged",
+                       "--points-at", "--sort", "--format", "--column", "-u",
+                       "--set-upstream-to"}
+
+
+def branch_discipline(call):
+    """Agents work on the branch they were started on. Creating, renaming, copying,
+    deleting or switching branches is the operator's call -- and Claude Code's built-in
+    'branch first on the default branch' advice is exactly what this overrides.
+
+    Denies `checkout -b/-B/--orphan`, any `switch`, `branch` with a name or -m/-c,
+    and `worktree add` without `--detach` (it creates a branch). Listing stays allowed:
+    `git branch`, `git branch -a`, `--show-current`, `--list <pattern>`.
+
+    ponytail: a regex over the raw command, not a shell parse. `git` counts only in command
+    position (line start, after ; & | ( do then) -- so it sees `git -C $p …` inside a
+    `for … do` loop, which the stash token walk misses, and skips `grep 'git switch'`.
+    Ceiling: a quoted string or heredoc line that itself starts a command (`"x; git switch"`)
+    is denied too.
+    """
+    if call.kind != "shell" or "git" not in call.command:
+        return None
+    for match in _GIT_BRANCH_CMD.finditer(call.command):
+        sub, args = match.group(2), match.group(3).split()
+        if _branch_change(sub, args):
+            shown = " ".join(["git", sub, *args])
+            return Deny(
+                f"Blocked: `{shown}` changes branches. Agents work "
+                f"and commit on the CURRENT branch, whatever it is -- including main. Do not "
+                f"create, switch, rename or delete a branch, and do not hand the operator a "
+                f"command that does. If the work truly needs a branch, stop and ask.",
+                rule="branch-discipline",
+            )
+    return None
+
+
+def _branch_change(sub, args):
+    if sub == "switch":
+        return True
+    if sub == "checkout":
+        return any(a in ("-b", "-B", "--orphan") or a.startswith("--orphan=") for a in args)
+    if sub == "worktree":
+        if not args or args[0] != "add":
+            return False
+        detached = "--detach" in args or "-d" in args
+        return not detached or "-b" in args or "-B" in args
+    # sub == "branch"
+    if any(a in ("-m", "-M", "-c", "-C", "--move", "--copy") for a in args):
+        return True
+    if any(a in ("-l", "--list", "--show-current") for a in args):
+        return False
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+        elif a in _BRANCH_VALUE_FLAGS:
+            skip = True
+        elif not a.startswith("-") and not a.startswith((">", "2>")):
+            return True
+    return False
+
+
+# --- legals: signed and received documents ---------------------------------
+
+_LEGALS_RECORD_PATH = re.compile(r"(^|/)(executed|incoming)/[^/]+$")
+# Mutating shell forms aimed at a record path. `cp incoming/x agreements/` is the normal way a
+# redline starts and stays allowed: only the source is a record, and cp does not touch it.
+_LEGALS_RECORD_SHELL = re.compile(
+    r"(?:\b(?:rm|mv|sed\s+-i\S*|truncate|tee)\b[^;&|\n]*|>>?\s*)"
+    r"(?:\S*/)?(?:executed|incoming)(?:/\S*)?(?=\s|$|[;&|)])"
+)
+
+
+def legals_readonly_records(call):
+    """A signed agreement or a counterparty's draft as received is a record, never a draft.
+
+    `agreements/<matter>/executed/` holds what was signed; `incoming/` holds what the other
+    side sent. Both are evidence of what the parties actually agreed or proposed, and an edit
+    there -- even a tidy-up -- destroys the one copy that proves it. A correction is a deed of
+    variation; a redline is a marked copy under agreements/. Writes and the common mutating
+    shell forms are denied; reads and `cp` FROM a record stay open.
+
+    ponytail: regex over the raw command, not a shell parse; a runtime-expanded path
+    (`rm $f`) is not seen. Upgrade to a token walk if that ever bites.
+    """
+    if call.kind == "write":
+        if _LEGALS_RECORD_PATH.search(call.path):
+            return Deny(
+                f"Blocked: `{call.path}` is a record -- a signed agreement under executed/ or a "
+                f"counterparty's draft under incoming/ -- and is never edited. A redline is a "
+                f"marked copy under agreements/<matter>/; a correction to a signed agreement is "
+                f"a deed of variation.",
+                rule="legals-readonly-records",
+            )
+        return None
+    if call.kind == "shell" and ("executed" in call.command or "incoming" in call.command):
+        match = _LEGALS_RECORD_SHELL.search(call.command)
+        if match:
+            return Deny(
+                f"Blocked: `{match.group(0).strip()}` modifies a record under executed/ or "
+                f"incoming/. Those are never changed, moved or removed by an agent -- copy "
+                f"out of them into agreements/<matter>/ instead.",
+                rule="legals-readonly-records",
+            )
+    return None
+
+
 # --- guard sets -------------------------------------------------------------
 # Per unit, composed. Every unit in a project's stack is enabled at once and PreToolUse
 # hooks compose, so a predicate belongs in the LOWEST unit where it is universally true --
@@ -749,6 +838,7 @@ GUARD_SETS = {
     # in all five sets below; the stash list is shared mutable state in any repo, code or not.
     "project-core": [
         stash_discipline,
+        branch_discipline,
     ],
     # Every code channel, Laravel and frontend alike. `git_tag_release` was repeated in four
     # sets: tagging is operator-only in any code repo, and the rule that says so
@@ -759,7 +849,6 @@ GUARD_SETS = {
     ],
     "laravel-core": [
         bare_runners,
-        bare_composer_update,
         composer_release,
         generated_openapi,
         frozen_bootstrap_migrations,
@@ -780,7 +869,11 @@ GUARD_SETS = {
         workspace_write,
         per_package_release_at_root,
         cross_repo_git,
-        generated_register_columns,
+    ],
+    # No base: a legals repo is documents, not code. The one hard block is the record
+    # folders -- a signed agreement or a counterparty's draft as received is evidence.
+    "legals": [
+        legals_readonly_records,
     ],
 }
 
@@ -866,11 +959,11 @@ def claude_main(channel):
 
 
 def claude_rm_main():
-    """PreToolUse adapter for the global rm-scope guard. Bash only, three verdicts.
+    """PreToolUse adapter for the global rm-scope guard. Bash only, allow or silence.
 
     Separate from claude_main because this one emits ALLOW. claude_main only ever denies --
     silence there means "nothing objected", which is not the same as "approved". Here silence
-    and approval are genuinely different outcomes and the wire has to say which.
+    means "the operator decides" (the normal permission prompt) and the wire has to say which.
     """
     import json as _json
     import sys as _sys
@@ -884,18 +977,13 @@ def claude_rm_main():
             _sys.exit(0)
 
         command = (payload.get("tool_input") or {}).get("command", "") or ""
-        verdict = rm_scope(shell(command, payload.get("cwd") or os.getcwd()))
-        if verdict is None:
+        if rm_scope(shell(command, payload.get("cwd") or os.getcwd())) != "allow":
             _sys.exit(0)
 
-        allowed = verdict == "allow"
         _emit_and_exit({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "allow" if allowed else "deny",
-            "permissionDecisionReason": (
-                "Every `rm` target resolves inside the project." if allowed
-                else verdict.reason
-            ),
+            "permissionDecision": "allow",
+            "permissionDecisionReason": "Every `rm` target resolves inside the project.",
         }})
     except SystemExit:
         raise
@@ -903,12 +991,13 @@ def claude_rm_main():
         _fail_open(exc, "claude-rm")
 
 
-def claude_stash_main():
-    """PreToolUse adapter for the global stash-discipline guard. Bash only, deny-only.
+def claude_git_main():
+    """PreToolUse adapter for the global git guard (hooks/git_guard.py). Deny-only.
 
-    Wired next to claude_rm_main's entry in ~/.claude/settings.json so stash discipline
-    holds in ~ and unwired checkouts. In a wired project the channel's guard.py carries the
-    same predicate; the two verdicts agree, so the overlap is harmless.
+    Wired in ~/.claude/settings.json with matcher `Bash|Agent`, so stash and branch
+    discipline hold in ~ and unwired checkouts. In a wired project project-core's guard.py
+    carries the same Bash predicates; the verdicts agree, so the overlap is harmless.
+    Agent is here because `isolation: "worktree"` makes a worktree-* branch.
     """
     import json as _json
     import sys as _sys
@@ -918,11 +1007,18 @@ def claude_stash_main():
         except (_json.JSONDecodeError, ValueError):
             _sys.exit(0)  # never break the session on a malformed payload
 
-        if payload.get("tool_name") != "Bash":
-            _sys.exit(0)
-
-        command = (payload.get("tool_input") or {}).get("command", "") or ""
-        verdict = stash_discipline(shell(command, payload.get("cwd") or os.getcwd()))
+        tool = payload.get("tool_name")
+        ti = payload.get("tool_input") or {}
+        verdict = None
+        if tool == "Bash":
+            call = shell(ti.get("command", "") or "", payload.get("cwd") or os.getcwd())
+            verdict = check(call, [stash_discipline, branch_discipline])
+        elif tool == "Agent" and ti.get("isolation") == "worktree":
+            verdict = Deny(
+                "Blocked: `isolation: \"worktree\"` creates a branch. Agents work on the "
+                "current branch -- run the subagent without isolation.",
+                rule="branch-discipline",
+            )
         if verdict:
             _emit_and_exit({"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -933,7 +1029,7 @@ def claude_stash_main():
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001 -- see ON FAILING OPEN above
-        _fail_open(exc, "claude-stash")
+        _fail_open(exc, "claude-git")
 
 
 def guards_for(channels):

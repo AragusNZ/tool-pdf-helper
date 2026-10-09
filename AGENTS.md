@@ -2,9 +2,10 @@
 
 **Project type:** python-tool
 
-<!-- The marker line above is parsed by the wiring tool. Keep the exact format.
-     Shipping status is NOT declared here — it lives in the SHIPPING_STATUS file,
-     which is the only source of truth. A missing file reads as Shipped. -->
+<!-- The line above is prose. The project type is declared in .dev-tools/config.json,
+     which is what `dt agents wire` and the rest of dev-tools both read.
+     Shipping status is NOT declared here — it is the `shipped` key in .dev-tools/config.json,
+     which is the only source of truth. A missing key reads as Shipped. -->
 
 Conventions load automatically from `~/dev/ai-agents`:
 

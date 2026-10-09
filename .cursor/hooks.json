@@ -1,5 +1,5 @@
 {
-  "_generated": "by ai-agents-wire from ai-agents-config; re-run ai-agents-wire to refresh",
+  "_generated": "by dt agents wire from ai-agents; re-run dt agents wire to refresh",
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
