@@ -173,7 +173,8 @@ class MainWindow(QMainWindow):
         return dialog
 
     def _build_menus(self) -> None:
-        theme_menu = self.menuBar().addMenu("&View").addMenu("&Theme")
+        view_menu = self.menuBar().addMenu("&View")
+        theme_menu = view_menu.addMenu("&Theme")
         group = QActionGroup(self)
         current = settings().value("theme", "System")
         for name in ("System", "Light", "Dark"):
@@ -181,6 +182,9 @@ class MainWindow(QMainWindow):
             action.triggered.connect(partial(self._set_theme, name))
             group.addAction(action)
             theme_menu.addAction(action)
+        self.modal_run = QAction("&Block the window while a job runs", self, checkable=True, checked=modal_run())
+        self.modal_run.toggled.connect(lambda on: settings().setValue("modal_run", on))
+        view_menu.addAction(self.modal_run)
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(QAction("Check for &Updates...", self, triggered=lambda: self._check_updates(manual=True)))
         self.startup_check = QAction("Check on &Startup", self, checkable=True, checked=check_on_startup())
@@ -303,12 +307,15 @@ class MainWindow(QMainWindow):
         ctx.cancelled = self._worker.isInterruptionRequested
         ctx.parent = None
         self._ctx = ctx
-        self.run_dialog = RunDialog(self, feature.label)
+        if self.run_dialog is not None:
+            self.run_dialog.close()  # a finished non-modal dialog left open; one run, one dialog
+        self.run_dialog = RunDialog(self, feature.label, modal=modal_run())
         self.run_dialog.cancelled.connect(self._cancel)
         self.run_dialog.open_output.connect(self._open_output)
         self._worker.message.connect(self.log)
         self._worker.message.connect(self.run_dialog.message)
         self._worker.progress.connect(self.run_dialog.set_progress)
+        self._worker.progress.connect(lambda done, total: self.statusBar().showMessage(f"Working... {done} of {total}"))
         self._worker.failed.connect(self._on_failed)
         self._worker.finished.connect(self._on_finished)
         self._refresh_buttons()
@@ -376,6 +383,10 @@ class MainWindow(QMainWindow):
 
 def check_on_startup() -> bool:
     return settings().value("check_updates", True, type=bool)
+
+
+def modal_run() -> bool:
+    return settings().value("modal_run", True, type=bool)
 
 
 def _follow_system_scheme(_scheme) -> None:

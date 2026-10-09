@@ -445,3 +445,57 @@ def test_window_geometry_survives_a_restart(qapp):
     w.closeEvent(QCloseEvent())
     assert app_module.settings().value("geometry")
     assert MainWindow().size() == w.size()
+
+
+def test_non_modal_run_keeps_the_window_usable_and_mirrors_progress(qapp, tmp_path: Path):
+    import threading
+
+    gate = threading.Event()
+    feat = Feature(label="T", run=lambda ctx, p: (each_file(ctx, lambda src: src), gate.wait(5)), exts=None)
+    (tmp_path / "a.txt").write_text("x")
+    app_module.settings().remove("modal_run")
+    try:
+        w = _window(qapp, [feat])
+        assert w.modal_run.isChecked()  # modal by default
+        w.modal_run.setChecked(False)
+        assert not app_module.modal_run() and not MainWindow().modal_run.isChecked()  # remembered
+        w.queue.add_paths([tmp_path / "a.txt"])
+        w._run_feature(feat)
+        first = w.run_dialog
+        assert first.windowModality() == app_module.Qt.WindowModality.NonModal
+        assert not w.run_button.isEnabled()  # the window is usable, but not for a second job
+        gate.set()
+        _wait(w, qapp)
+        assert w.statusBar().currentMessage() == "1 file(s) queued"  # progress mirrored while busy, queue after
+        w._run_feature(feat)  # a second run closes the first dialog
+        assert not first.isVisible() and w.run_dialog is not first
+        gate.set()
+        _wait(w, qapp)
+    finally:
+        app_module.settings().remove("modal_run")
+
+
+def test_status_bar_mirrors_progress_while_busy(qapp, tmp_path: Path):
+    import threading
+
+    gate, started = threading.Event(), threading.Event()
+
+    def one(src: Path) -> Path:
+        if src.name == "b.txt":
+            started.set()
+            gate.wait(5)
+        return src
+
+    feat = Feature(label="T", run=lambda ctx, p: each_file(ctx, one), exts=None)
+    files = []
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text("x")
+        files.append(tmp_path / name)
+    w = _window(qapp, [feat])
+    w.queue.add_paths(files)
+    w._run_feature(feat)
+    assert started.wait(5)
+    qapp.processEvents()  # deliver the first file's progress signal
+    assert w.statusBar().currentMessage() == "Working... 1 of 2"
+    gate.set()
+    _wait(w, qapp)

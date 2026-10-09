@@ -22,10 +22,11 @@ class RunDialog(QDialog):
     cancelled = Signal()  # Cancel, Esc or the title-bar X while running
     open_output = Signal()  # the Done-state button
 
-    def __init__(self, parent: QWidget | None, title: str):
+    def __init__(self, parent: QWidget | None, title: str, modal: bool = True):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setWindowModality(Qt.WindowModality.WindowModal)
+        # Modal blocks the window until the job ends; non-modal leaves the queue editable (Run stays disabled).
+        self.setWindowModality(Qt.WindowModality.WindowModal if modal else Qt.WindowModality.NonModal)
         self.setMinimumWidth(420)
         self._running = True
 

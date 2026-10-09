@@ -40,6 +40,8 @@ While a job runs, a dialog counts files done and **Cancel** stops it after the c
 window responds until it is over. When it finishes, the dialog says whether it worked, in green, or failed, in red,
 with **OK** and, when files were written, **Open output folder**. **Details** in the dialog lists what happened to
 each file; it opens by itself when one fails. The line beside **Run** repeats the result after the dialog closes.
+Untick **View > Block the window while a job runs** to keep the queue editable during a job; the status bar
+counts files done either way.
 
 ### Convert
 

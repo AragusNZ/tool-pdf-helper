@@ -821,6 +821,8 @@ def test_run_dialog_progress_and_details(qapp):
 
     d = RunDialog(None, "Compress")
     assert d.windowTitle() == "Compress" and d.progress.maximum() == 0  # busy until the first file reports
+    assert d.windowModality() == Qt.WindowModality.WindowModal  # the default blocks the window
+    assert RunDialog(None, "T", modal=False).windowModality() == Qt.WindowModality.NonModal
     assert not d.details_button.isChecked()
     d.set_progress(2, 5)
     assert d.progress.text() == "2 of 5" and d.progress.isTextVisible()
