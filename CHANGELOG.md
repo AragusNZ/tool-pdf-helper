@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-09
+
 ### Changed
 
 - A job now runs behind a dialog: a progress bar and **Cancel**, and nothing else in the window responds until it
