@@ -195,3 +195,47 @@ def test_start_marker_sits_inside_the_highlight_with_its_disc(tmp_path: Path):
         disc = page.get_links()[0]["from"]
         corner = pymupdf.Point(annot.vertices[0])  # top-left of the highlighted quad, (72, 90) here
         assert annot.rect.contains(disc.tl) and abs(disc.x0 - corner.x) < 1 and abs(disc.y0 - corner.y) < 1
+
+
+def _two_columns(path: Path) -> Path:
+    """Left column highlight low on the page, right column highlight high: reading order is left then right."""
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        page.insert_text((72, 300), "left column text")
+        page.insert_text((320, 100), "right column text")
+        for rect, comment in [((72, 290, 200, 304), "left, earlier in reading order"), ((320, 90, 450, 104), "right, higher up")]:
+            page.add_highlight_annot(pymupdf.Rect(*rect)).set_info(content=comment)
+        doc.save(path)
+    return path
+
+
+def test_margin_numbers_follow_page_position_not_reading_order(tmp_path: Path):
+    out = tmp_path / "out.pdf"
+    footnote_comments(_two_columns(tmp_path / "a.pdf"), out)
+    with pymupdf.open(out) as doc:
+        assert "1\nleft, earlier" in doc[1].get_text() and "2\nright, higher" in doc[1].get_text()  # numbering unchanged
+        one, two = (link["from"] for link in doc[0].get_links())  # links are added in note order
+        assert two.y1 < one.y0  # but number 2 sits above number 1 in the margin
+
+
+@pytest.mark.parametrize("marker, edge_x", [("right", 200), ("left", 72)])
+def test_leader_line_joins_highlight_edge_to_number(tmp_path: Path, marker, edge_x):
+    src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
+    out = tmp_path / "out.pdf"
+    footnote_comments(src, out, NotesOptions(marker=marker, leader=True, disc=(0.85, 0.85, 0.85)))
+    with pymupdf.open(out) as doc:
+        page = doc[0]
+        (line,) = [d for d in page.get_drawings() if d["items"][0][0] == "l"]
+        _, p1, p2 = line["items"][0]
+        mark = page.get_links()[0]["from"]
+        assert abs(p1.x - edge_x) < 0.01 and 90 < p1.y < 104  # leaves the highlight's near edge, mid-line
+        assert abs(p2.x - (mark.x0 - 1 if marker == "right" else mark.x1 + 1)) < 0.01  # arrives at the number
+
+
+def test_no_leader_for_inline_or_start(tmp_path: Path):
+    src = _commented(tmp_path / "a.pdf", {0: ["one"]}, pages=1)
+    for marker in ("inline", "start"):
+        out = tmp_path / f"{marker}.pdf"
+        footnote_comments(src, out, NotesOptions(marker=marker, leader=True))
+        with pymupdf.open(out) as doc:
+            assert not [d for d in doc[0].get_drawings() if d["items"][0][0] == "l"]

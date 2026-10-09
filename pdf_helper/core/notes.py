@@ -38,6 +38,7 @@ class NotesOptions:
     mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
     disc: tuple[float, float, float] | None = None  # fill of a disc behind the number on the page; None for no disc
     heading: str = "Notes for"  # notes page heading, followed by "page N"
+    leader: bool = False  # thin line from the highlight's nearest edge to a margin number
 
 
 @dataclass
@@ -45,6 +46,7 @@ class Note:
     page: int  # 0-based source page
     start: pymupdf.Point  # where the annotation begins, for ordering and the back link
     end: pymupdf.Point  # upper-right of its last quad, for an inline marker
+    first: pymupdf.Rect  # its first line (first quad), whose edges a leader line leaves from
     quote: str
     comment: str
     author: str
@@ -103,18 +105,24 @@ def _collect(page: pymupdf.Page, opts: NotesOptions) -> list[Note]:
             continue
         if markup:
             start, end = pymupdf.Point(annot.vertices[0]), pymupdf.Point(annot.vertices[-3])  # ul of first quad, ur of last
+            first = pymupdf.Quad(annot.vertices[:4]).rect
         else:
-            start, end = annot.rect.tl, annot.rect.tr
+            start, end, first = annot.rect.tl, annot.rect.tr, annot.rect
         block = next((i for i, b in enumerate(blocks) if b.contains(start)), len(blocks))
-        note = Note(page.number, start, end, quote, comment, _text(annot.info.get("title")), replies.get(annot.xref, []))
+        note = Note(page.number, start, end, first, quote, comment, _text(annot.info.get("title")), replies.get(annot.xref, []))
         found.append((block, start.y, note))
     return [note for _, _, note in sorted(found, key=lambda f: f[:2])]
 
 
 def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
-    """Write each note's number on the page and remember where."""
+    """Write each note's number on the page and remember where.
+
+    Margin numbers are laid out top to bottom by where their highlight starts, whatever the reading
+    order, so a right-column note that sits above a left-column one is not pushed below it.
+    """
+    margin = opts.marker in ("right", "left")
     last_y = -opts.mark_size
-    for note in notes:
+    for note in sorted(notes, key=lambda n: n.start.y) if margin else notes:
         label = str(note.n)
         size = opts.mark_size
         width = pymupdf.get_text_length(label, fontname="hebo", fontsize=size)
@@ -131,8 +139,14 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         note.mark = pymupdf.Rect(at.x, at.y - size, at.x + width, at.y + 2)
         if radius:
             center = pymupdf.Point(at.x + width / 2, at.y - size * 0.35)
-            page.draw_circle(center, radius, color=None, fill=opts.disc)
             note.mark = pymupdf.Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius)
+        if opts.leader and margin:  # highlight's near edge, mid-line, to the number's near edge
+            right = opts.marker == "right"
+            edge = pymupdf.Point(note.first.x1 if right else note.first.x0, (note.first.y0 + note.first.y1) / 2)
+            tip = pymupdf.Point(note.mark.x0 - 1 if right else note.mark.x1 + 1, (note.mark.y0 + note.mark.y1) / 2)
+            page.draw_line(edge, tip, color=opts.mark_color, width=0.5)
+        if radius:
+            page.draw_circle(center, radius, color=None, fill=opts.disc)
         page.insert_text(at, label, fontsize=size, fontname="hebo", color=opts.mark_color)
 
 
