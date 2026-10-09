@@ -13,10 +13,10 @@ from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM
 from pdf_helper.ui import dialogs, theme
 from pdf_helper.ui.edit_dialog import EditDialog
+from pdf_helper.ui.file_queue import FileQueue
 from pdf_helper.ui.place_dialog import PlaceDialog
 from pdf_helper.ui.preview import PagePreview
 from pdf_helper.ui.redact_dialog import DragPreview, RedactDialog
-from pdf_helper.ui.file_queue import FileQueue
 from pdf_helper.ui.worker import Worker
 
 

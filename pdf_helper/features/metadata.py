@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pdf_helper.core.pdf import metadata, set_metadata
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import Namer, ask_fields, ask_output
+from pdf_helper.ui.dialogs import ask_fields, ask_output
 
 FIELDS = {"Title": "title", "Author": "author", "Subject": "subject", "Keywords": "keywords"}
 

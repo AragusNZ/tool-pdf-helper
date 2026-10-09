@@ -6,14 +6,36 @@ from functools import partial
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings, QTimer, QUrl, Slot
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import (
-    QAction, QActionGroup, QCloseEvent, QDesktopServices, QFont, QFontDatabase, QGuiApplication, QIcon, QKeySequence,
-    QPalette, QShortcut,
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QDesktopServices,
+    QFont,
+    QFontDatabase,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+    QPalette,
+    QShortcut,
 )
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPlainTextEdit,
-    QProgressBar, QPushButton, QStyleFactory, QTabWidget, QVBoxLayout, QWidget,
+    QApplication,
+    QButtonGroup,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QStyleFactory,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pdf_helper import __version__
@@ -257,7 +279,7 @@ class MainWindow(QMainWindow):
         if feature.prepare is not None:
             try:
                 params = feature.prepare(ctx)
-            except Exception as exc:  # noqa: BLE001 - prepare opens the file; it may be corrupt or gone
+            except Exception as exc:
                 log.exception("%s prepare failed", feature.label)
                 self.log(f"ERROR: {feature.label}: {exc or type(exc).__name__}")
                 self._set_notice(f"{feature.label} failed: {exc or type(exc).__name__}", QPalette.ColorRole.BrightText)
@@ -377,7 +399,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(str(asset_path("icon.ico"))))
     # The native Windows 11 style draws Fluent controls properly; Fusion is the fallback elsewhere.
-    app.setStyle("windows11" if "windows11" in QStyleFactory.keys() else "Fusion")
+    app.setStyle("windows11" if "windows11" in QStyleFactory.keys() else "Fusion")  # noqa: SIM118 - a class, not a dict
     if "Segoe UI Variable Text" in QFontDatabase.families():
         font = QFont("Segoe UI Variable Text")
         font.setPointSizeF(10.5)  # Windows 11 Body: 14px regular

@@ -4,8 +4,28 @@ Order is the button order, and the ``group`` of each feature is its tab, in firs
 """
 
 from pdf_helper.features import (
-    compress, create_pdf, delete_pages, edit, extract_content, extract_pages, find_text, footnotes, grayscale, merge,
-    metadata, nup, protect, redact, resize, rotate, split, split_bookmarks, tables, to_docx, to_images, unlock,
+    compress,
+    create_pdf,
+    delete_pages,
+    edit,
+    extract_content,
+    extract_pages,
+    find_text,
+    footnotes,
+    grayscale,
+    merge,
+    metadata,
+    nup,
+    protect,
+    redact,
+    resize,
+    rotate,
+    split,
+    split_bookmarks,
+    tables,
+    to_docx,
+    to_images,
+    unlock,
 )
 
 FEATURES = [

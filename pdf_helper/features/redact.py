@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pdf_helper.core.replace import redact
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import Namer, ask_output
+from pdf_helper.ui.dialogs import ask_output
 from pdf_helper.ui.redact_dialog import RedactDialog
 
 

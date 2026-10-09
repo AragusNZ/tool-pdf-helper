@@ -4,6 +4,7 @@ import subprocess
 import sys
 import types
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -124,8 +125,8 @@ def test_office_to_pdf_reports_silent_converter(monkeypatch, tmp_path: Path):
 class _Proc:
     """A Popen stand-in: ``outcome`` is (returncode, stderr) or an exception to raise from communicate()."""
 
-    started: list[list[str]] = []
-    killed: list[int] = []
+    started: ClassVar[list[list[str]]] = []
+    killed: ClassVar[list[int]] = []
 
     def __init__(self, cmd, **kw):
         self.started.append(cmd)

@@ -4,15 +4,22 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from tests.conftest import ink_bbox
-
 from pdf_helper.core.convert import PAGE_SIZES
 from pdf_helper.core.impose import impose
 from pdf_helper.core.render import render_page_png, render_pages
 from pdf_helper.core.replace import replace_text
 from pdf_helper.core.stamp import (
-    NUMBER_FORMATS, NUMBER_POSITIONS, add_image, add_text, font_for, fonts, image_size, page_numbers, watermark,
+    NUMBER_FORMATS,
+    NUMBER_POSITIONS,
+    add_image,
+    add_text,
+    font_for,
+    fonts,
+    image_size,
+    page_numbers,
+    watermark,
 )
+from tests.conftest import ink_bbox
 
 
 def test_render_pages(make_pdf, tmp_path: Path):
@@ -116,7 +123,7 @@ def test_page_numbers_land_bottom_centre_on_a_rotated_page(tmp_path: Path):
     out = tmp_path / "rot-num.pdf"
     page_numbers(_rotated(tmp_path), out)  # displayed 400 wide x 300 high
     with pymupdf.open(out) as doc:
-        x0, x1, y0, y1 = ink_bbox(doc[0])
+        x0, x1, _y0, y1 = ink_bbox(doc[0])
         assert abs((x0 + x1) / 2 - 200) < 3 and 250 < y1 < 260 and x1 - x0 < 20  # 15 mm up from the bottom
 
 
@@ -175,7 +182,7 @@ def test_replace_text_shrinks_instead_of_wrapping(tmp_path: Path):
         spans = [s for b in doc[0].get_text("dict")["blocks"] for l in b["lines"] for s in l["spans"]]
     words = [s["text"] for s in spans]
     assert "elephant" in words and "cat" not in "".join(words)
-    assert [s["size"] for s in spans if s["text"] == "elephant"][0] < 11  # shrunk to fit the old box
+    assert next(s["size"] for s in spans if s["text"] == "elephant") < 11  # shrunk to fit the old box
 
 
 def test_replace_text_with_nothing_deletes_it(tmp_path: Path):

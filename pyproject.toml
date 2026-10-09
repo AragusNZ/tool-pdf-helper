@@ -10,3 +10,6 @@ omit = ["pdf_helper/__main__.py"]
 fail_under = 95
 show_missing = true
 skip_covered = true
+
+[tool.ruff]
+line-length = 120

@@ -4,8 +4,19 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QListWidget, QMessageBox,
-    QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pdf_helper.core.edit import EDITS_EXT, Op, apply_edits, describe, load_edits, save_edits
@@ -96,7 +107,7 @@ class EditDialog(QDialog):
         """Make ``ops`` the edit list if every one applies to the source; otherwise say why and change nothing."""
         try:
             self._compose(ops)
-        except Exception as exc:  # noqa: BLE001 - a bad page spec, a missing image, a malformed edits file: user input
+        except Exception as exc:
             self.error.setText(str(exc) or type(exc).__name__)
             return False
         self.ops = ops
@@ -158,7 +169,7 @@ class EditDialog(QDialog):
             return
         try:
             ops = load_edits(Path(name))
-        except Exception as exc:  # noqa: BLE001 - not JSON, not a list, unknown kind: all the file's fault
+        except Exception as exc:
             self.error.setText(str(exc) or type(exc).__name__)
             return
         for op in ops:  # one at a time, so the ones before a bad one still land

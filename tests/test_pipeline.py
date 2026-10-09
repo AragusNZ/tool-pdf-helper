@@ -7,20 +7,21 @@ between the queue, the button gating, the dialogs and the worker thread shows up
 import logging
 import logging.handlers
 from pathlib import Path
+from typing import ClassVar
 
 import pymupdf
 import pytest
 
 from pdf_helper import app as app_module
 from pdf_helper.app import MainWindow
-from pdf_helper.core.pdf import page_count
 from pdf_helper.core.convert import IMAGE_SIZE
+from pdf_helper.core.pdf import page_count
 from pdf_helper.features import create_pdf, edit, merge, redact, split, to_images
 from tests.conftest import fake_ask_output
 
 
 def _run(window: MainWindow, label: str, qapp) -> str:
-    feature, button = next(pair for pair in window.feature_buttons if pair[0].label == label)
+    _feature, button = next(pair for pair in window.feature_buttons if pair[0].label == label)
     assert button.isEnabled(), f"{label} not enabled for the queue"
     button.click()
     assert window._worker is None and window.run_button.text() == f"Run {label}"  # picking an action runs nothing
@@ -49,7 +50,7 @@ def test_edit_pipeline_whole_queue(qapp, make_pdf, tmp_path: Path, monkeypatch):
     out_dir.mkdir()
 
     class FakeEditDialog:
-        ops = [{"kind": "watermark", "text": "DRAFT"}, {"kind": "numbers", "fmt": "{n}", "position": "Top right"}]
+        ops: ClassVar[list] = [{"kind": "watermark", "text": "DRAFT"}, {"kind": "numbers", "fmt": "{n}", "position": "Top right"}]
 
         def __init__(self, parent, src: Path):
             pass

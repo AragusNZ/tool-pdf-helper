@@ -1,5 +1,5 @@
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import QThread, Signal
 
@@ -23,6 +23,6 @@ class Worker(QThread):
     def run(self) -> None:
         try:
             self._fn()
-        except Exception as exc:  # noqa: BLE001 - surface anything to the log
+        except Exception as exc:
             log.exception("feature failed")  # full traceback to the log file, short message to the UI
             self.failed.emit(str(exc) or type(exc).__name__)

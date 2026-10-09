@@ -40,7 +40,7 @@ def office_to_pdf(src: Path, out: Path, log=print) -> None:
             if out.exists():
                 return
             errors.append(f"{name}: produced no output")
-        except Exception as exc:  # noqa: BLE001 - any failure means try the next converter
+        except Exception as exc:
             errors.append(f"{name}: {exc}")
             log(f"  {name} failed, trying next: {exc}")
     raise ConversionError(
@@ -100,7 +100,7 @@ def _com_export(client, ext: str, src_s: str, out_s: str) -> None:
         if app is not None:
             try:
                 app.Quit()
-            except Exception:  # noqa: BLE001 - a stuck instance is worth a log line, not a failed conversion
+            except Exception:
                 log.warning("%s application did not quit; it may still be running hidden", ext, exc_info=True)
 
 
@@ -139,6 +139,6 @@ def _libreoffice(src: Path, out: Path) -> None:
 def _kill_tree(proc: subprocess.Popen) -> None:
     """On Windows soffice.exe is a launcher: killing it alone leaves soffice.bin running and the profile locked."""
     if sys.platform == "win32":
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False)
     proc.kill()
     proc.wait()

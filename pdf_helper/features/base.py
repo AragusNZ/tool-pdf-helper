@@ -1,9 +1,10 @@
 """Feature contract. A feature is a button; the app knows nothing else about it."""
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from pdf_helper.core.convert import is_supported
 
@@ -54,7 +55,7 @@ def each_file(ctx: FeatureContext, fn: Callable[[Path], Path | list[Path] | None
             break
         try:
             written = fn(src)
-        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
+        except Exception as exc:
             logging.getLogger(__name__).exception("%s failed", src)
             ctx.log(f"ERROR: {src.name}: {exc or type(exc).__name__}")
             failed += 1

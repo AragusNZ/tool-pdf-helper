@@ -248,12 +248,13 @@ def notes_markdown(name: str, notes: list[Note], opts: NotesOptions) -> str:
     return "\n".join(lines)
 
 
-def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(), *, md: Path | None = None) -> int:
+def footnote_comments(src: Path, out: Path, opts: NotesOptions | None = None, *, md: Path | None = None) -> int:
     """Number every reviewer comment, follow the pages with notes, link the two and bookmark the notes.
 
     Numbers run through the whole file. Returns how many notes were written; raises when there are none.
     ``md`` also receives the notes as Markdown.
     """
+    opts = opts if opts is not None else NotesOptions()
     _not_source(out, [src])
     if opts.placement not in PLACEMENTS or opts.marker not in MARKERS:
         raise ValueError(f"unknown placement {opts.placement!r} or marker {opts.marker!r}")

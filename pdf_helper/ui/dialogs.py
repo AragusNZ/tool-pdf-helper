@@ -1,9 +1,18 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QInputDialog, QLineEdit, QWidget,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QInputDialog,
+    QLineEdit,
+    QWidget,
 )
 
 from pdf_helper.core.pages import parse_page_spec

@@ -1,6 +1,7 @@
 """Every feature: queue gating, prepare() with dialogs stubbed, run() output."""
 
 from pathlib import Path
+from typing import ClassVar
 
 import pymupdf
 import pytest
@@ -9,8 +10,29 @@ from pdf_helper.core.convert import AUTO, IMAGE_SIZE, MATCH
 from pdf_helper.core.notes import NotesOptions
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import (
-    FEATURES, compress, create_pdf, delete_pages, edit, extract_content, extract_pages, find_text, footnotes, grayscale,
-    merge, metadata, nup, protect, redact, resize, rotate, split, split_bookmarks, tables, to_docx, to_images, unlock,
+    FEATURES,
+    compress,
+    create_pdf,
+    delete_pages,
+    edit,
+    extract_content,
+    extract_pages,
+    find_text,
+    footnotes,
+    grayscale,
+    merge,
+    metadata,
+    nup,
+    protect,
+    redact,
+    resize,
+    rotate,
+    split,
+    split_bookmarks,
+    tables,
+    to_docx,
+    to_images,
+    unlock,
 )
 from pdf_helper.features.base import FeatureContext, each_file
 from pdf_helper.ui import dialogs
@@ -308,7 +330,7 @@ class _FakeEditDialog:
     """Stands in for EditDialog: no Qt, canned edits."""
 
     accept = True
-    ops: list = []
+    ops: ClassVar[list] = []
 
     def __init__(self, parent, src: Path):
         self.src = src

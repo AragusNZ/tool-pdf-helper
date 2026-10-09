@@ -5,8 +5,20 @@ from pathlib import Path
 import pymupdf
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pdf_helper.core.convert import IMAGE_EXTS
@@ -138,7 +150,7 @@ class PlaceDialog(QDialog):
             return
         try:
             width, height = image_size(Path(name))
-        except Exception as exc:  # noqa: BLE001 - an unreadable or non-raster file is user input
+        except Exception as exc:
             self.error.setText(f"cannot read {Path(name).name}: {exc}")
             return
         self._aspect = height / width

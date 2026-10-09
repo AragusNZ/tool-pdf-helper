@@ -2,8 +2,9 @@
 
 import json
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import _not_source, page_count
