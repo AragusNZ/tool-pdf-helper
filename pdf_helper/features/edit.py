@@ -4,16 +4,15 @@ from pathlib import Path
 
 from pdf_helper.core.edit import Op, apply_edits
 from pdf_helper.features.base import PDF_ONLY, Feature, FeatureContext, each_file
-from pdf_helper.ui.dialogs import Namer, ask_output
+from pdf_helper.ui.dialogs import Namer
 from pdf_helper.ui.edit_dialog import EditDialog
 
 
 def prepare(ctx: FeatureContext) -> tuple[list[Op], Namer] | None:
-    dialog = EditDialog(ctx.parent, ctx.files[0])
-    if not dialog.exec():
-        return None
-    name = ask_output(ctx.parent, ctx.files, "-edited")
-    return (dialog.ops, name) if name else None
+    dialog = EditDialog(ctx.parent, ctx.files)  # asks where to write itself, so a cancelled Save keeps the edits
+    accepted = dialog.exec()
+    dialog.deleteLater()
+    return (dialog.ops, dialog.namer) if accepted else None
 
 
 def run(ctx: FeatureContext, params: tuple[list[Op], Namer]) -> None:

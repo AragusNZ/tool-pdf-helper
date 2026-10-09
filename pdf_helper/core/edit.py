@@ -44,6 +44,13 @@ def _replace(src: Path, out: Path, op: Op) -> str:
 _APPLY: dict[str, Callable[[Path, Path, Op], str | None]] = {
     "text": _text, "image": _image, "numbers": _numbers, "watermark": _watermark, "replace": _replace,
 }
+_FIELDS = {  # what each kind must carry, so a hand-edited edits file is refused up front rather than failing later
+    "text": {"text", "pos", "pages", "font", "size", "color"},
+    "image": {"image", "rect", "pages"},
+    "numbers": {"fmt", "position"},
+    "watermark": {"text"},
+    "replace": {"old", "new", "case_sensitive"},
+}
 
 
 def apply_edits(src: Path, out: Path, ops: list[Op]) -> list[str]:
@@ -67,7 +74,8 @@ def apply_edits(src: Path, out: Path, ops: list[Op]) -> list[str]:
 def describe(op: Op) -> str:
     """One line for the editor's list."""
     kind = op["kind"]
-    where = f"on pages {op['pages']}" if op.get("pages") else "on all pages"
+    spec = op.get("pages", "")
+    where = f"on page{'' if spec.isdigit() else 's'} {spec}" if spec else "on all pages"
     if kind == "text":
         return f'Text "{op["text"]}" {where}'
     if kind == "image":
@@ -85,7 +93,14 @@ def save_edits(path: Path, ops: list[Op]) -> None:
 
 def load_edits(path: Path) -> list[Op]:
     """The edits a ``save_edits`` file holds. A file of another shape is refused with a clear message."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list) or not all(isinstance(op, dict) and op.get("kind") in _APPLY for op in data):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        data = None
+    if not isinstance(data, list) or not all(_valid(op) for op in data):
         raise ValueError(f"{path.name} is not an edits file")
     return data
+
+
+def _valid(op: object) -> bool:
+    return isinstance(op, dict) and op.get("kind") in _FIELDS and _FIELDS[op["kind"]] <= op.keys()

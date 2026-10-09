@@ -79,6 +79,11 @@ under the log opens where the files went.
     in Helvetica (Noto Sans when the text needs more than Latin-1) at the original size and colour; longer text is
     shrunk to fit.
 
+  The list shows the edits in the order they apply; **Move up** / **Move down** reorder them, **Remove** (or the
+  Delete key) drops one, and selecting a text or image edit outlines it on the preview. After a Replace text edit
+  the status line says how many hits it had on the previewed file, so a Find text that matched nothing shows as
+  `0 replacement(s)`. **Save PDF...** asks where to write before the editor closes; cancelling that keeps the edits.
+
   **Save edits...** writes the pending list to a `.pdfedits.json` file; **Load edits...** brings it back, onto the
   same PDF another day or onto different ones.
 

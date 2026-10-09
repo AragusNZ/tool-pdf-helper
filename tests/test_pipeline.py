@@ -17,7 +17,7 @@ from pdf_helper.app import MainWindow
 from pdf_helper.core.convert import IMAGE_SIZE
 from pdf_helper.core.pdf import page_count
 from pdf_helper.features import create_pdf, edit, merge, redact, split, to_images
-from tests.conftest import fake_ask_output
+from tests.conftest import fake_ask_output, into
 
 
 def _run(window: MainWindow, label: str, qapp) -> str:
@@ -52,14 +52,16 @@ def test_edit_pipeline_whole_queue(qapp, make_pdf, tmp_path: Path, monkeypatch):
     class FakeEditDialog:
         ops: ClassVar[list] = [{"kind": "watermark", "text": "DRAFT"}, {"kind": "numbers", "fmt": "{n}", "position": "Top right"}]
 
-        def __init__(self, parent, src: Path):
-            pass
+        def __init__(self, parent, files: list[Path]):
+            self.namer = into(out_dir, "-edited")
 
         def exec(self) -> bool:
             return True
 
+        def deleteLater(self) -> None:
+            pass
+
     monkeypatch.setattr(edit, "EditDialog", FakeEditDialog)
-    monkeypatch.setattr(edit, "ask_output", fake_ask_output(out_dir))
     w = MainWindow()
     w.queue.add_paths([make_pdf("a.pdf", 1), make_pdf("b.pdf", 2)])
 

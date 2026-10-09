@@ -327,27 +327,32 @@ WATERMARK = {"kind": "watermark", "text": "X"}
 
 
 class _FakeEditDialog:
-    """Stands in for EditDialog: no Qt, canned edits."""
+    """Stands in for EditDialog: no Qt, canned edits and output namer."""
 
     accept = True
     ops: ClassVar[list] = []
+    folder: Path | None = None
 
-    def __init__(self, parent, src: Path):
-        self.src = src
+    def __init__(self, parent, files: list[Path]):
+        self.files = files
+        self.namer = into(self.folder, "-edited") if self.folder else None
 
     def exec(self) -> bool:
         return type(self).accept
 
+    def deleteLater(self) -> None:
+        pass
 
-def _fake_edit_dialog(monkeypatch, accept: bool, ops: list = ()):
-    monkeypatch.setattr(edit, "EditDialog", type("_E", (_FakeEditDialog,), {"accept": accept, "ops": list(ops)}))
+
+def _fake_edit_dialog(monkeypatch, accept: bool, ops: list = (), folder: Path | None = None):
+    fake = type("_E", (_FakeEditDialog,), {"accept": accept, "ops": list(ops), "folder": folder})
+    monkeypatch.setattr(edit, "EditDialog", fake)
 
 
 def test_edit_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     pdf = make_pdf("a.pdf", 2)
     ops = [TEXT, {"kind": "replace", "old": "page", "new": "leaf", "case_sensitive": False}]
-    _fake_edit_dialog(monkeypatch, True, ops)
-    monkeypatch.setattr(edit, "ask_output", fake_ask_output(tmp_path))
+    _fake_edit_dialog(monkeypatch, True, ops, tmp_path)
     ctx = FeatureContext([pdf], log)
     params = edit.FEATURE.prepare(ctx)
     assert params[0] == ops
@@ -358,11 +363,9 @@ def test_edit_prepare_and_run(make_pdf, tmp_path: Path, log, monkeypatch):
     assert log.lines == [f"a.pdf: 2 edit(s) (2 replacement(s)) -> {tmp_path / 'a-edited.pdf'}"]
 
 
-@pytest.mark.parametrize("accepted, folder", [(False, "x"), (True, None)])
-def test_edit_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch, accepted, folder):
-    """Cancelling the editor, or the output chooser after it, both mean no work."""
-    _fake_edit_dialog(monkeypatch, accepted, [TEXT])
-    monkeypatch.setattr(edit, "ask_output", fake_ask_output(tmp_path if folder else None))
+def test_edit_prepare_cancel(make_pdf, tmp_path: Path, log, monkeypatch):
+    """The editor asks where to write before it closes, so a cancelled editor is the only way to no work."""
+    _fake_edit_dialog(monkeypatch, False, [TEXT], tmp_path)
     assert edit.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
 
 

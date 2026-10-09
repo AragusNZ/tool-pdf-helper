@@ -51,7 +51,8 @@ def test_apply_edits_unknown_kind(make_pdf, tmp_path: Path):
 def test_describe():
     assert describe(TEXT) == 'Text "PAID" on all pages'
     assert describe({**TEXT, "pages": "1-3"}) == 'Text "PAID" on pages 1-3'
-    assert describe(image(Path("/x/logo.png"))) == "Image logo.png on pages 1"
+    assert describe(image(Path("/x/logo.png"))) == "Image logo.png on page 1"
+    assert describe({**image(Path("l.png")), "pages": "1,3"}) == "Image l.png on pages 1,3"
     assert describe(NUMBERS) == "Page numbers: Page 1 of 10, Top right"
     assert describe(WATERMARK) == 'Watermark "DRAFT"'
     assert describe(REPLACE) == 'Replace "page" with "leaf" (match case)'
@@ -64,9 +65,11 @@ def test_edits_file_round_trip(tmp_path: Path):
     assert load_edits(path) == [TEXT, REPLACE]
 
 
-@pytest.mark.parametrize("content", ['{"kind": "text"}', '[{"kind": "fly"}]', "[1]"])
+@pytest.mark.parametrize(
+    "content", ['{"kind": "text"}', '[{"kind": "fly"}]', "[1]", '[{"kind": "watermark"}]', "not json", b"\xff\xfe"]
+)
 def test_edits_file_of_another_shape_is_refused(tmp_path: Path, content):
     path = tmp_path / f"x{EDITS_EXT}"
-    path.write_text(content)
+    path.write_bytes(content if isinstance(content, bytes) else content.encode())
     with pytest.raises(ValueError, match="not an edits file"):
         load_edits(path)

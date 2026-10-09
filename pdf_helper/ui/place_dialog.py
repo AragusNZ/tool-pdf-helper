@@ -36,10 +36,11 @@ class PlaceDialog(QDialog):
     page spec are applied to every queued file.
     """
 
-    def __init__(self, parent: QWidget | None, src: Path, mode: str):
+    def __init__(self, parent: QWidget | None, src: Path, mode: str, start: Path | None = None):
         super().__init__(parent)
         self.mode = mode
         self.src = src
+        self.start = start or src.parent  # where Browse... opens; the editor previews a temp file, so it says
         self.total = page_count(src)
         self.point: tuple[float, float] | None = None
         self.colour = QColor("black")
@@ -48,7 +49,7 @@ class PlaceDialog(QDialog):
 
         self.preview = PagePreview()
         self.preview.clicked.connect(self._on_click)
-        self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1)
+        self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1, suffix=f" of {self.total}")
         self.page_box.valueChanged.connect(self._render)
         self.spec = QLineEdit("1")
         self._spec_edited = False  # once the user types a spec, stop following the preview page
@@ -145,7 +146,7 @@ class PlaceDialog(QDialog):
 
     def _pick_image(self) -> None:
         pattern = " ".join(f"*{e}" for e in sorted(IMAGE_EXTS))
-        name, _ = QFileDialog.getOpenFileName(self, "Choose image", str(self.src.parent), f"Images ({pattern})")
+        name, _ = QFileDialog.getOpenFileName(self, "Choose image", str(self.start), f"Images ({pattern})")
         if not name:
             return
         try:

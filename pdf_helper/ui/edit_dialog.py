@@ -3,7 +3,11 @@
 import tempfile
 from pathlib import Path
 
+import pymupdf
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -20,31 +24,45 @@ from PySide6.QtWidgets import (
 )
 
 from pdf_helper.core.edit import EDITS_EXT, Op, apply_edits, describe, load_edits, save_edits
+from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import NUMBER_FORMATS, NUMBER_POSITIONS
-from pdf_helper.ui.dialogs import ask_options, ask_text
+from pdf_helper.ui.dialogs import Namer, ask_options, ask_output, ask_text
 from pdf_helper.ui.place_dialog import PlaceDialog
 from pdf_helper.ui.preview import PagePreview, preview_px
 
+Box = tuple[float, float, float, float]
+
 
 class EditDialog(QDialog):
-    """The preview shows the first queued PDF with every edit applied; the edits go onto every queued file."""
+    """The preview shows the first queued PDF with every edit applied; the edits go onto every queued file.
 
-    def __init__(self, parent: QWidget | None, src: Path):
+    Save PDF... asks where to write before closing, so a cancelled file dialog keeps the edits.
+    """
+
+    def __init__(self, parent: QWidget | None, files: list[Path]):
         super().__init__(parent)
-        self.src = src
-        self.total = page_count(src)
+        self.files = files
+        self.src = files[0]
+        self.total = page_count(self.src)
         self.ops: list[Op] = []
+        self.namer: Namer | None = None  # set by Save PDF...
         self._tmp = tempfile.TemporaryDirectory()
-        self.current = src  # the source, or the composed preview once there are edits
+        self.finished.connect(lambda _code: self._tmp.cleanup())  # the dialog outlives exec() as a child of the window
+        self.current = self.src  # the source, or the composed preview once there are edits
         self.setWindowTitle("Edit")
 
+        batch = f" - edits apply to all {len(files)} queued files" if len(files) > 1 else ""
+        heading = QLabel(self.src.name + batch)
         self.preview = PagePreview()
-        self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1)
+        self.page_box = QSpinBox(minimum=1, maximum=self.total, value=1, suffix=f" of {self.total}")
         self.page_box.valueChanged.connect(self._render)
         self.list = QListWidget()
-        self.error = QLabel(wordWrap=True)
+        self.list.currentRowChanged.connect(self._outline)
+        self.delete_key = QShortcut(QKeySequence.StandardKey.Delete, self.list, activated=self._remove)
+        self.delete_key.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.status = QLabel(wordWrap=True)
 
         form = QFormLayout()
         form.addRow("Preview page:", self.page_box)
@@ -62,15 +80,22 @@ class EditDialog(QDialog):
 
         self.remove = QPushButton("Remove", enabled=False)
         self.remove.clicked.connect(self._remove)
+        self.up = QPushButton("Move up", enabled=False)
+        self.up.clicked.connect(lambda: self._move(-1))
+        self.down = QPushButton("Move down", enabled=False)
+        self.down.clicked.connect(lambda: self._move(1))
         self.save_button = QPushButton("Save edits...", enabled=False)
         self.save_button.clicked.connect(self._save_edits)
         load = QPushButton("Load edits...")
         load.clicked.connect(self._load_edits)
-        files = QHBoxLayout()
-        files.addWidget(self.remove)
-        files.addStretch()
-        files.addWidget(self.save_button)
-        files.addWidget(load)
+        order = QHBoxLayout()
+        for b in (self.remove, self.up, self.down):
+            order.addWidget(b)
+        order.addStretch()
+        files_row = QHBoxLayout()
+        files_row.addStretch()
+        files_row.addWidget(self.save_button)
+        files_row.addWidget(load)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Save PDF...")
@@ -82,79 +107,119 @@ class EditDialog(QDialog):
         side.addLayout(adds)
         side.addWidget(QLabel("Edits, applied in this order:"))
         side.addWidget(self.list)
-        side.addLayout(files)
-        side.addWidget(self.error)
+        side.addLayout(order)
+        side.addLayout(files_row)
+        side.addWidget(self.status)
         side.addWidget(self.buttons)
         panel = QWidget(maximumWidth=340)
         panel.setLayout(side)
+        left = QVBoxLayout()
+        left.addWidget(heading)
+        left.addWidget(self.preview)
         layout = QHBoxLayout()
-        layout.addWidget(self.preview)
+        layout.addLayout(left)
         layout.addWidget(panel)
         self.setLayout(layout)
 
         self._refresh()
 
     # --- edits -------------------------------------------------------------
-    def _compose(self, ops: list[Op]) -> None:
-        if ops:
-            out = Path(self._tmp.name) / f"{len(ops)}.pdf"
-            apply_edits(self.src, out, ops)
-            self.current = out
-        else:
+    def _compose(self, ops: list[Op]) -> list[str]:
+        if not ops:
             self.current = self.src
+            return []
+        out = Path(self._tmp.name) / f"{len(ops)}.pdf"
+        notes = apply_edits(self.src, out, ops)
+        self.current = out
+        return notes
 
-    def _set(self, ops: list[Op]) -> bool:
-        """Make ``ops`` the edit list if every one applies to the source; otherwise say why and change nothing."""
+    def _set(self, ops: list[Op], what: str = "", row: int | None = None) -> bool:
+        """Make ``ops`` the edit list if every one applies to the source; otherwise say why and change nothing.
+
+        ``what`` names the edit being added, for the message. ``row`` is the row to leave selected (default: last).
+        """
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self._compose(ops)
-        except Exception as exc:
-            self.error.setText(str(exc) or type(exc).__name__)
+            notes = self._compose(ops)
+        except Exception as exc:  # a bad page spec, a missing image, a malformed edits file: user input
+            message = str(exc) or type(exc).__name__
+            self.status.setText(f"{what}: {message}" if what else message)
             return False
+        finally:
+            QApplication.restoreOverrideCursor()
         self.ops = ops
-        self.error.clear()
-        self._refresh()
+        self.status.setText(f"{'; '.join(notes)} in {self.src.name}" if notes else "")
+        self._refresh(row)
         return True
 
-    def _refresh(self) -> None:
+    def _refresh(self, row: int | None = None) -> None:
         self.list.clear()
         self.list.addItems([describe(op) for op in self.ops])
-        self.list.setCurrentRow(len(self.ops) - 1)
-        for widget in (self.remove, self.save_button, self.buttons.button(QDialogButtonBox.StandardButton.Ok)):
+        self.list.setCurrentRow(len(self.ops) - 1 if row is None else row)
+        ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        for widget in (self.remove, self.up, self.down, self.save_button, ok):
             widget.setEnabled(bool(self.ops))
         self._render()
 
     def _render(self) -> None:
         png, width, _ = render_page_png(self.current, self.page_box.value() - 1, max_px=preview_px(self))
         self.preview.show_page(png, width)
+        self._outline()
+
+    def _box(self, op: Op | None) -> Box | None:
+        """Where a text or image edit lands on the previewed page, or None for the other kinds and other pages."""
+        if op is None or op["kind"] not in ("text", "image"):
+            return None
+        if op["pages"] and self.page_box.value() - 1 not in parse_page_spec(op["pages"], self.total):
+            return None
+        if op["kind"] == "image":
+            return tuple(op["rect"])
+        x, y = op["pos"]
+        return (x, y, x + pymupdf.Font(op["font"]).text_length(op["text"], op["size"]), y + op["size"])
+
+    def _outline(self) -> None:
+        row = self.list.currentRow()
+        box = self._box(self.ops[row] if 0 <= row < len(self.ops) else None)
+        self.preview.draw_boxes([box] if box else [])
 
     def _remove(self) -> None:
         row = self.list.currentRow()
         if row >= 0:
-            self._set(self.ops[:row] + self.ops[row + 1:])
+            self._set(self.ops[:row] + self.ops[row + 1:], row=min(row, len(self.ops) - 2))
+
+    def _move(self, delta: int) -> None:
+        row, new = self.list.currentRow(), self.list.currentRow() + delta
+        if 0 <= row < len(self.ops) and 0 <= new < len(self.ops):
+            ops = list(self.ops)
+            ops[row], ops[new] = ops[new], ops[row]
+            self._set(ops, row=new)
+
+    def _add(self, op: Op) -> bool:
+        return self._set([*self.ops, op], describe(op))
 
     # --- adding ------------------------------------------------------------
     def _place(self, mode: str) -> None:
-        dialog = PlaceDialog(self, self.current, mode)  # placed on the composed page, so it sits over earlier edits
+        # Placed on the composed page, so it sits over earlier edits; images are browsed from beside the real file.
+        dialog = PlaceDialog(self, self.current, mode, start=self.src.parent)
         dialog.page_box.setValue(self.page_box.value())
         if dialog.exec():
-            self._set([*self.ops, dialog.op()])
+            self._add(dialog.op())
 
     def _add_numbers(self) -> None:
         answers = ask_options(self, "Page numbers", {"Show": list(NUMBER_FORMATS), "Position": list(NUMBER_POSITIONS)})
         if answers is not None:
-            self._set([*self.ops, {"kind": "numbers", "fmt": NUMBER_FORMATS[answers["Show"]], "position": answers["Position"]}])
+            self._add({"kind": "numbers", "fmt": NUMBER_FORMATS[answers["Show"]], "position": answers["Position"]})
 
     def _add_watermark(self) -> None:
         text = (ask_text(self, "Watermark", "Watermark text:") or "").strip()
         if text:
-            self._set([*self.ops, {"kind": "watermark", "text": text}])
+            self._add({"kind": "watermark", "text": text})
 
     def _add_replace(self) -> None:
         answers = ask_options(self, "Replace text", {"Find": "", "Replace with": "", "Match case": False})
         old = str(answers["Find"]).strip() if answers is not None else ""
         if old:
-            op = {"kind": "replace", "old": old, "new": answers["Replace with"], "case_sensitive": answers["Match case"]}
-            self._set([*self.ops, op])
+            self._add({"kind": "replace", "old": old, "new": answers["Replace with"], "case_sensitive": answers["Match case"]})
 
     # --- edits file --------------------------------------------------------
     def _save_edits(self) -> None:
@@ -169,14 +234,19 @@ class EditDialog(QDialog):
             return
         try:
             ops = load_edits(Path(name))
-        except Exception as exc:
-            self.error.setText(str(exc) or type(exc).__name__)
+        except ValueError as exc:
+            self.status.setText(str(exc))
             return
         for op in ops:  # one at a time, so the ones before a bad one still land
-            if not self._set([*self.ops, op]):
+            if not self._add(op):
                 break
 
     # --- closing -----------------------------------------------------------
+    def accept(self) -> None:
+        self.namer = ask_output(self, self.files, "-edited")
+        if self.namer is not None:
+            super().accept()
+
     def reject(self) -> None:
         if self.ops:
             answer = QMessageBox.question(self, "Edit", f"Discard {len(self.ops)} edit(s)?")
