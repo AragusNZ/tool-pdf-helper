@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-09
+
 ### Fixed
 
 - Rotated pages: Redact boxes, Add text, Add image, Page numbers and Watermark now land where the preview showed
