@@ -38,7 +38,7 @@ class NotesOptions:
     mark_color: tuple[float, float, float] = MARK_COLOR  # RGB 0-1, for the number on the page and on the notes page
     disc: tuple[float, float, float] | None = None  # fill of a disc behind the number on the page; None for no disc
     heading: str = "Notes for"  # notes page heading, followed by "page N"
-    leader: bool = False  # thin line from the highlight's nearest edge to a margin number, which then sits in a bubble
+    leader: bool = False  # thin line from the highlight's nearest point to a margin number, which then sits in a bubble
 
 
 @dataclass
@@ -46,7 +46,7 @@ class Note:
     page: int  # 0-based source page
     start: pymupdf.Point  # where the annotation begins, for ordering and the back link
     end: pymupdf.Point  # upper-right of its last quad, for an inline marker
-    first: pymupdf.Rect  # its first line (first quad), whose edges a leader line leaves from
+    rects: list[pymupdf.Rect]  # each highlighted line; a leader leaves from the one nearest the number
     quote: str
     comment: str
     author: str
@@ -59,14 +59,19 @@ def _text(content: str | None) -> str:
     return (content or "").strip()
 
 
+def _lines(annot: pymupdf.Annot) -> list[pymupdf.Rect]:
+    """One rect per quad of a text markup annotation, a line of the marked text each."""
+    quads = annot.vertices
+    return [pymupdf.Quad(quads[i:i + 4]).rect for i in range(0, len(quads), 4)]
+
+
 def _quoted(words: list, annot: pymupdf.Annot) -> str:
     """The page's words whose middle sits inside one of the annotation's quads.
 
     Per quad rather than ``annot.rect`` so a column neighbour is not swept in; by word middle so the
     overlapping line quads of a scanned page do not repeat a line.
     """
-    quads = annot.vertices
-    rects = [pymupdf.Quad(quads[i:i + 4]).rect for i in range(0, len(quads), 4)]
+    rects = _lines(annot)
 
     def inside(word) -> bool:
         mid = (pymupdf.Point(word[0], word[1]) + pymupdf.Point(word[2], word[3])) / 2
@@ -105,11 +110,11 @@ def _collect(page: pymupdf.Page, opts: NotesOptions) -> list[Note]:
             continue
         if markup:
             start, end = pymupdf.Point(annot.vertices[0]), pymupdf.Point(annot.vertices[-3])  # ul of first quad, ur of last
-            first = pymupdf.Quad(annot.vertices[:4]).rect
+            rects = _lines(annot)
         else:
-            start, end, first = annot.rect.tl, annot.rect.tr, annot.rect
+            start, end, rects = annot.rect.tl, annot.rect.tr, [annot.rect]
         block = next((i for i, b in enumerate(blocks) if b.contains(start)), len(blocks))
-        note = Note(page.number, start, end, first, quote, comment, _text(annot.info.get("title")), replies.get(annot.xref, []))
+        note = Note(page.number, start, end, rects, quote, comment, _text(annot.info.get("title")), replies.get(annot.xref, []))
         found.append((block, start.y, note))
     return [note for _, _, note in sorted(found, key=lambda f: f[:2])]
 
@@ -141,10 +146,10 @@ def _stamp(page: pymupdf.Page, notes: list[Note], opts: NotesOptions) -> None:
         if radius:
             center = pymupdf.Point(at.x + width / 2, at.y - size * 0.35)
             note.mark = pymupdf.Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius)
-        if opts.leader and margin:  # highlight's near edge, mid-line, to the number's near edge
-            right = opts.marker == "right"
-            edge = pymupdf.Point(note.first.x1 if right else note.first.x0, (note.first.y0 + note.first.y1) / 2)
-            tip = pymupdf.Point(note.mark.x0 - 1 if right else note.mark.x1 + 1, (note.mark.y0 + note.mark.y1) / 2)
+        if opts.leader and margin:  # nearest point of the nearest highlighted line, so the leader crosses none
+            edge = min((pymupdf.Point(min(max(center.x, r.x0), r.x1), min(max(center.y, r.y0), r.y1)) for r in note.rects),
+                       key=lambda p: abs(p - center))
+            tip = center + (edge - center) * ((radius + 1) / abs(edge - center))  # the bubble's rim, 1pt out
             page.draw_line(edge, tip, color=opts.mark_color, width=0.5)
         if radius:
             page.draw_circle(center, radius, color=opts.mark_color if bubble else None, fill=opts.disc, width=0.5)

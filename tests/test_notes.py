@@ -242,3 +242,22 @@ def test_no_leader_for_inline_or_start(tmp_path: Path):
         footnote_comments(src, out, NotesOptions(marker=marker, leader=True))
         with pymupdf.open(out) as doc:
             assert not [d for d in doc[0].get_drawings() if d["items"][0][0] == "l"]
+
+
+@pytest.mark.parametrize("marker", ["right", "left"])
+def test_leader_line_never_crosses_its_highlight(tmp_path: Path, marker):
+    """Three notes on one line push the fourth's number below its first line, onto its second."""
+    src, out = tmp_path / "a.pdf", tmp_path / "out.pdf"
+    lines = [pymupdf.Rect(150, 104, 250, 118), pymupdf.Rect(72, 118, 400, 132)]  # second line wider both sides
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        for x in (72, 130, 190):
+            page.add_highlight_annot(pymupdf.Rect(x, 90, x + 50, 104)).set_info(content="crowd")
+        page.add_highlight_annot(quads=lines).set_info(content="two lines")
+        doc.save(src)
+    footnote_comments(src, out, NotesOptions(marker=marker, leader=True))
+    with pymupdf.open(out) as doc:
+        *_, (_, p1, p2) = [d["items"][0] for d in doc[0].get_drawings() if d["items"][0][0] == "l"]  # lowest number, drawn last
+    assert any((r + (-0.01, -0.01, 0.01, 0.01)).contains(p1) for r in lines)  # leaves the highlight itself
+    inner = [r + (0.01, 0.01, -0.01, -0.01) for r in lines]
+    assert not any(r.contains(p1 + (p2 - p1) * (k / 50)) for k in range(1, 50) for r in inner)

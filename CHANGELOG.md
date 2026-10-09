@@ -5,6 +5,11 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Fixed
+
+- Footnotes: the leader line now runs from the nearest point of the highlight to its margin number, and no
+  longer cuts across the highlighted text.
+
 ## [1.4.0] - 2026-10-09
 
 ### Changed
