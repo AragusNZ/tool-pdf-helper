@@ -126,7 +126,8 @@ def apply_scheme(name: str) -> None:
     if app is None:
         return
     hints = QGuiApplication.styleHints()
-    hints.setColorScheme(SCHEMES.get(name, Qt.ColorScheme.Unknown))
-    effective = hints.colorScheme() if name == "System" else SCHEMES[name]
+    scheme = SCHEMES.get(name, Qt.ColorScheme.Unknown)  # an unknown stored value follows the system
+    hints.setColorScheme(scheme)
+    effective = hints.colorScheme() if scheme == Qt.ColorScheme.Unknown else scheme
     app.setPalette(_palette(DARK if effective == Qt.ColorScheme.Dark else LIGHT))
     app.setStyleSheet(stylesheet(app.style().name()))

@@ -86,3 +86,11 @@ def test_find_text(tmp_path: Path):
     assert find_text(src, "Bolt") == [(1, 3)]  # the cell plus "Bolt and bolt"
     assert find_text(src, "Bolt", case_sensitive=True) == [(1, 2)]
     assert find_text(src, "sprocket") == []
+
+
+def test_find_text_match_case_counts_a_wrapped_hit(tmp_path: Path):
+    src = tmp_path / "w.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page().insert_textbox(pymupdf.Rect(72, 72, 150, 200), "the Secret Code is", fontsize=12)
+        doc.save(src)
+    assert find_text(src, "Secret Code", case_sensitive=True) == [(1, 2)]  # one rect per line of the hit

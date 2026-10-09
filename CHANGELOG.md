@@ -5,6 +5,45 @@ All notable changes to this project are documented here, in
 
 ## [Unreleased]
 
+### Fixed
+
+- Rotated pages: Redact boxes, Add text, Add image, Page numbers and Watermark now land where the preview showed
+  them. They were placed in the page's unrotated space, so on a page turned 90° a box blacked out the wrong area and
+  text ran sideways down the far edge.
+- Match case in Redact, Replace text and Find text missed a phrase that wrapped from one line to the next, so a
+  case-sensitive redaction could leave it in the file. Each line of the hit now counts.
+- Watermark, Page numbers and Replace text switch to Noto Sans for text outside Latin-1, so "Māori" no longer comes
+  out as "M·ori".
+- Footnote comments "after each page" sized every notes page from the wrong page once earlier notes pages had been
+  inserted; a landscape page now gets a landscape notes page.
+- Split by bookmarks dropped the pages before the first bookmark; they now come out as `<name>-01 front matter.pdf`.
+- Create PDF and Merge onto a fixed page size (A4, Letter...) downsampled every image to 72 dpi. A scan keeps its
+  pixels, and a JPEG its stream.
+- Merge honours Cancel between files and counts them on the progress bar.
+- Open output folder no longer reopens the previous job's folder after a job that wrote nothing.
+- Help > Check for Updates says so when a check is already running instead of doing nothing.
+- Dropping a folder the app cannot read no longer crashes it; the folder is logged as skipped. The same file added
+  by a relative and an absolute path is queued once.
+- A stored theme the app does not know (an old or hand-edited setting) no longer stops it at startup.
+- A Find or Watermark text of only spaces is treated as a cancel.
+- Office conversion: Word, Excel and PowerPoint run with alerts off, so a repair, links or password prompt from the
+  invisible application raises an error instead of hanging the job for ever; an application that will not quit is
+  logged. A LibreOffice timeout now kills `soffice.bin` as well as its launcher and reports the timeout rather than a
+  locked profile folder, and LibreOffice's own error is shown when it exits cleanly without writing a PDF.
+- The page preview in Add text, Add image and Redact shrinks on short screens so the bottom of the page can be clicked.
+- Compress says when the output is no smaller than the original.
+
+### Changed
+
+- `pytest --cov` fails locally under 95% coverage, the same gate as CI. The test suite keeps its settings in a
+  temp folder instead of the real user settings.
+
+### Internal
+
+- `check` runs on every push to `main`, not only tags and pull requests. `release` refuses a tag that does not
+  match `VERSION`, runs the coverage gate on Windows and fails if an asset is missing. The installer removes the
+  previous `_internal` on upgrade and refuses 32-bit or pre-Windows 10 machines.
+
 ## [1.3.0] - 2026-10-09
 
 ### Added

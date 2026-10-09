@@ -14,7 +14,7 @@ from pdf_helper.core.pages import parse_page_spec
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
 from pdf_helper.core.stamp import MM, fonts, image_size
-from pdf_helper.ui.preview import PagePreview
+from pdf_helper.ui.preview import PagePreview, preview_px
 
 
 class PlaceDialog(QDialog):
@@ -110,7 +110,7 @@ class PlaceDialog(QDialog):
     def _render(self) -> None:
         if not self._spec_edited:
             self.spec.setText(str(self.page_box.value()))
-        png, width, _ = render_page_png(self.src, self.page_box.value() - 1)
+        png, width, _ = render_page_png(self.src, self.page_box.value() - 1, max_px=preview_px(self))
         self.preview.show_page(png, width)
         self._changed()
 

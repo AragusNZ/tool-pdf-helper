@@ -14,6 +14,10 @@ DefaultDirName={localappdata}\Programs\PDF Helper
 DefaultGroupName=PDF Helper
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+; What the README promises: Windows 10 or 11, 64-bit. The exe will not run on anything else.
+MinVersion=10.0
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=PdfHelper-{#AppVersion}-setup
 Compression=lzma2/max
@@ -22,6 +26,10 @@ WizardStyle=modern
 SetupIconFile=..\pdf_helper\assets\icon.ico
 LicenseFile=..\LICENSE
 UninstallDisplayIcon={app}\PdfHelper.exe
+
+[InstallDelete]
+; An upgrade in place must not keep the previous version's DLLs and .pyd files beside the new ones.
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 Source: "..\dist\PdfHelper\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion

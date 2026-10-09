@@ -63,6 +63,22 @@ def test_queue_expands_directory(qapp, make_pdf, tmp_path: Path):
     assert [p.name for p in q.paths()] == ["b.pdf"] and [p.name for p in skipped] == ["notes.md"]
 
 
+def test_queue_skips_a_folder_it_cannot_read(qapp, monkeypatch, tmp_path: Path):
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    monkeypatch.setattr(Path, "iterdir", lambda self: (_ for _ in ()).throw(PermissionError("denied")))
+    q = FileQueue()
+    assert q.add_paths([locked]) == [locked] and q.paths() == []
+
+
+def test_queue_dedupes_a_relative_spelling(qapp, make_pdf, monkeypatch):
+    pdf = make_pdf("a.pdf", 1)
+    monkeypatch.chdir(pdf.parent)
+    q = FileQueue()
+    q.add_paths([pdf, Path("a.pdf")])
+    assert q.paths() == [pdf]
+
+
 def test_queue_remove_and_clear(qapp, make_pdf):
     q = FileQueue()
     a, b = make_pdf("a.pdf", 1), make_pdf("b.pdf", 1)
@@ -178,6 +194,10 @@ def test_worker_run_body_directly(qapp):
 def test_icon_asset_is_a_valid_ico(qapp):
     data = theme.asset_path("icon.ico").read_bytes()
     assert data[:4] == b"\x00\x00\x01\x00"  # ICO header: reserved=0, type=1 (icon)
+
+
+def test_apply_scheme_tolerates_an_unknown_stored_value(qapp):
+    theme.apply_scheme("Sepia")  # an old or hand-edited setting must not stop the app at startup
 
 
 def test_apply_scheme_uses_the_winui_surface_colours(qapp):

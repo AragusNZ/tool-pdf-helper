@@ -4,12 +4,14 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+from tests.conftest import ink_bbox
+
 from pdf_helper.core.convert import PAGE_SIZES
 from pdf_helper.core.impose import impose
 from pdf_helper.core.render import render_page_png, render_pages
 from pdf_helper.core.replace import replace_text
 from pdf_helper.core.stamp import (
-    NUMBER_FORMATS, NUMBER_POSITIONS, add_image, add_text, fonts, image_size, page_numbers, watermark,
+    NUMBER_FORMATS, NUMBER_POSITIONS, add_image, add_text, font_for, fonts, image_size, page_numbers, watermark,
 )
 
 
@@ -90,9 +92,49 @@ def test_add_text_all_pages_and_rotated(tmp_path: Path):
     out = tmp_path / "rot-text.pdf"
     add_text(src, out, "HERE", (120, 60), None, size=14)
     with pymupdf.open(out) as doc:
-        for page in doc:
-            words = [w for w in page.get_text("words") if w[4] == "HERE"]
-            assert words and abs(words[0][0] - 120) < 2 and abs(words[0][1] - 60) < 6
+        for page in doc:  # the rotated page shows its text where it was clicked, upright
+            x0, x1, y0, y1 = ink_bbox(page)
+            assert abs(x0 - 120) < 3 and abs(y0 - 60) < 6 and x1 - x0 > y1 - y0
+
+
+def _rotated(tmp_path: Path, width=300, height=400) -> Path:
+    src = tmp_path / "rot.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page(width=width, height=height).set_rotation(90)
+        doc.save(src)
+    return src
+
+
+def test_add_image_lands_where_clicked_on_a_rotated_page(make_png, tmp_path: Path):
+    out = tmp_path / "rot-image.pdf"
+    add_image(_rotated(tmp_path), out, make_png(), (20, 30, 80, 90))
+    with pymupdf.open(out) as doc:
+        assert ink_bbox(doc[0]) == pytest.approx((20, 79, 30, 89), abs=1)
+
+
+def test_page_numbers_land_bottom_centre_on_a_rotated_page(tmp_path: Path):
+    out = tmp_path / "rot-num.pdf"
+    page_numbers(_rotated(tmp_path), out)  # displayed 400 wide x 300 high
+    with pymupdf.open(out) as doc:
+        x0, x1, y0, y1 = ink_bbox(doc[0])
+        assert abs((x0 + x1) / 2 - 200) < 3 and 250 < y1 < 260 and x1 - x0 < 20  # 15 mm up from the bottom
+
+
+def test_watermark_is_centred_on_a_rotated_page(tmp_path: Path):
+    out = tmp_path / "rot-wm.pdf"
+    watermark(_rotated(tmp_path), "DRAFT", out, opacity=1)
+    with pymupdf.open(out) as doc:
+        x0, x1, y0, y1 = ink_bbox(doc[0])
+        assert abs((x0 + x1) / 2 - 200) < 5 and abs((y0 + y1) / 2 - 150) < 5
+
+
+def test_non_latin_text_uses_a_font_that_has_it(make_pdf, tmp_path: Path):
+    out = tmp_path / "wm.pdf"
+    watermark(make_pdf("m.pdf", 1), "Māori", out)
+    page_numbers(out, tmp_path / "n.pdf", fmt="Whārangi {n}")
+    with pymupdf.open(tmp_path / "n.pdf") as doc:
+        assert "Māori" in doc[0].get_text() and "Whārangi 1" in doc[0].get_text()
+    assert font_for("plain") == "helv" and font_for("Māori", "figo") == "figo"
 
 
 def test_add_text_rejects_bad_placement(make_pdf, tmp_path: Path):

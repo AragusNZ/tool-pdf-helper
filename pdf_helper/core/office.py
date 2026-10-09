@@ -1,11 +1,14 @@
 """Office document -> PDF. Tries Microsoft Office via COM, then LibreOffice headless."""
 
+import logging
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # (COM ProgID, export callable) per extension
 _WORD = {".doc", ".docx", ".rtf", ".odt", ".dot", ".dotx"}
@@ -54,27 +57,38 @@ def _com(src: Path, out: Path) -> None:
     import win32com.client  # type: ignore[import-not-found]
 
     pythoncom.CoInitialize()
-    ext = src.suffix.lower()
-    src_s, out_s = str(src.resolve()), str(out.resolve())
+    try:
+        _com_export(win32com.client, src.suffix.lower(), str(src.resolve()), str(out.resolve()))
+    finally:
+        pythoncom.CoUninitialize()  # every COM proxy is out of scope by now; releasing one after this can crash
+
+
+def _com_export(client, ext: str, src_s: str, out_s: str) -> None:
+    """Open, export, close. DisplayAlerts off: a repair, links or password prompt from an invisible
+    application would otherwise block the worker thread forever; off, it raises instead."""
+    app = None
     try:
         if ext in _WORD:
-            app = win32com.client.DispatchEx("Word.Application")
+            app = client.DispatchEx("Word.Application")
             app.Visible = False
+            app.DisplayAlerts = 0  # wdAlertsNone
             doc = app.Documents.Open(src_s, ReadOnly=True)
             try:
                 doc.ExportAsFixedFormat(out_s, 17)  # wdExportFormatPDF
             finally:
                 doc.Close(False)
         elif ext in _EXCEL:
-            app = win32com.client.DispatchEx("Excel.Application")
+            app = client.DispatchEx("Excel.Application")
             app.Visible = False
+            app.DisplayAlerts = False
             wb = app.Workbooks.Open(src_s, ReadOnly=True)
             try:
                 wb.ExportAsFixedFormat(0, out_s)  # xlTypePDF
             finally:
                 wb.Close(False)
         elif ext in _POWERPOINT:
-            app = win32com.client.DispatchEx("PowerPoint.Application")
+            app = client.DispatchEx("PowerPoint.Application")
+            app.DisplayAlerts = 1  # ppAlertsNone
             pres = app.Presentations.Open(src_s, ReadOnly=True, WithWindow=False)
             try:
                 pres.SaveAs(out_s, 32)  # ppSaveAsPDF
@@ -83,11 +97,11 @@ def _com(src: Path, out: Path) -> None:
         else:
             raise ConversionError(f"no COM handler for {ext}")
     finally:
-        try:
-            app.Quit()  # type: ignore[possibly-undefined]
-        except Exception:  # noqa: BLE001
-            pass
-        pythoncom.CoUninitialize()
+        if app is not None:
+            try:
+                app.Quit()
+            except Exception:  # noqa: BLE001 - a stuck instance is worth a log line, not a failed conversion
+                log.warning("%s application did not quit; it may still be running hidden", ext, exc_info=True)
 
 
 def find_libreoffice() -> str | None:
@@ -101,18 +115,30 @@ def _libreoffice(src: Path, out: Path) -> None:
     exe = find_libreoffice()
     if not exe:
         raise ConversionError("soffice not found")
-    with tempfile.TemporaryDirectory() as tmp:
+    # ignore_cleanup_errors: after a timeout the killed process may still hold the profile for a moment.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         # Private profile dir: otherwise a running LibreOffice window takes the job and we get no output.
         profile = Path(tmp, "profile").as_uri()
         cmd = [exe, f"-env:UserInstallation={profile}", "--headless", "--convert-to", "pdf", "--outdir", tmp, str(src)]
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=flags)
         try:
-            subprocess.run(cmd, check=True, capture_output=True, timeout=_TIMEOUT)
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or b"").decode(errors="replace").strip() or f"exit status {exc.returncode}"
-            raise ConversionError(f"soffice failed: {detail}") from None
+            _, stderr = proc.communicate(timeout=_TIMEOUT)
         except subprocess.TimeoutExpired:
+            _kill_tree(proc)
             raise ConversionError(f"soffice timed out after {_TIMEOUT} s") from None
+        detail = stderr.decode(errors="replace").strip()
+        if proc.returncode:
+            raise ConversionError(f"soffice failed: {detail or f'exit status {proc.returncode}'}")
         produced = Path(tmp) / f"{src.stem}.pdf"
         if not produced.exists():
-            raise ConversionError("soffice produced no output")
+            raise ConversionError("soffice produced no output" + (f": {detail}" if detail else ""))
         shutil.move(str(produced), str(out))
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """On Windows soffice.exe is a launcher: killing it alone leaves soffice.bin running and the profile locked."""
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    proc.kill()
+    proc.wait()

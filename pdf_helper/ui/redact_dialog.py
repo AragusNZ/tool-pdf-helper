@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 
 from pdf_helper.core.pdf import page_count
 from pdf_helper.core.render import render_page_png
-from pdf_helper.ui.preview import PagePreview
+from pdf_helper.ui.preview import PagePreview, preview_px
 
 MIN_SIDE = 3.0  # page points; anything smaller was a stray click, not a box
 FILL = QColor(0, 0, 0, 120)
@@ -114,7 +114,7 @@ class RedactDialog(QDialog):
         return self.page_box.value() - 1
 
     def _render(self) -> None:
-        png, width, _ = render_page_png(self.src, self._page())
+        png, width, _ = render_page_png(self.src, self._page(), max_px=preview_px(self))
         self.preview.show_page(png, width)
         self._refresh()
 

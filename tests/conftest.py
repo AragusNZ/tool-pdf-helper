@@ -33,6 +33,23 @@ def make_png(tmp_path: Path):
     return _make
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _settings_in_tmp(tmp_path_factory):
+    """The app's QSettings land in a temp folder, not the operator's real HKCU / ~/.config store."""
+    from PySide6.QtCore import QSettings
+
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path_factory.mktemp("settings")))
+
+
+def ink_bbox(page: pymupdf.Page) -> tuple[int, int, int, int]:
+    """(x0, x1, y0, y1) of the dark pixels on the rendered page, in displayed space - what a user sees."""
+    pix = page.get_pixmap()
+    dark = [(x, y) for y in range(pix.height) for x in range(pix.width) if sum(pix.pixel(x, y)) < 600]
+    xs, ys = [p[0] for p in dark], [p[1] for p in dark]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from PySide6.QtWidgets import QApplication

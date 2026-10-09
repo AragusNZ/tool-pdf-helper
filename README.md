@@ -70,7 +70,7 @@ finishes, **Open output folder** under the log opens where the files went.
 
 ### Text
 
-- **Replace text** – find and replace a string on every page, case-insensitive by default. Writes `<name>-replaced.pdf`. Replacements are drawn in Helvetica at the original size and colour; longer text is shrunk to fit.
+- **Replace text** – find and replace a string on every page, case-insensitive by default. Writes `<name>-replaced.pdf`. Replacements are drawn in Helvetica (Noto Sans when the text needs more than Latin-1) at the original size and colour; longer text is shrunk to fit.
 - **Redact** – drag boxes on the page preview, and/or name a phrase to remove everywhere. Both are taken out of the
   file rather than covered over: the text is deleted from the page content and image pixels under a box go with it.
   Boxes are dragged on the first queued PDF and applied to every queued PDF, as Add text and Add image do. Writes
@@ -100,7 +100,7 @@ finishes, **Open output folder** under the log opens where the files went.
 
 ## Good to know
 
-**Inputs.** PDF; images (png, jpg, gif, bmp, tiff, webp); txt, epub, xps, svg, cbz; Office documents
+**Inputs.** PDF; images (png, jpg, gif, bmp, tiff, webp, pnm/pgm/ppm); txt, epub, mobi, fb2, xps, svg, cbz; Office documents
 (doc/docx/rtf/odt, xls/xlsx/ods/csv, ppt/pptx/odp). Office documents are converted with Microsoft Office if it is
 installed, otherwise LibreOffice — one of the two must be present for those inputs, and nothing else needs it.
 
@@ -112,8 +112,8 @@ tracebacks go to `PdfHelper.log` in the system temp folder (`%TEMP%`); the log p
 The log is capped at 1 MB with one previous copy kept.
 
 **Fonts for Add text.** The 12 PDF base-14 text fonts (Helvetica, Times, Courier in four styles each) plus the
-`pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). They are embedded in the
-PDF, so the output renders the same anywhere.
+`pymupdf-fonts` families (FiraGO, Fira Mono, Noto Sans, Ubuntu, Cascadia Mono, Space Mono). The `pymupdf-fonts`
+families are embedded in the PDF; the base-14 fonts are not, as every PDF viewer carries them.
 
 **Queue.** **Delete** drops the selected rows; **Add files...** opens where the last batch came from.
 
@@ -123,8 +123,10 @@ controls; elsewhere it falls back to Fusion with the same colours.
 
 ## Limitations
 
-- Watermark, Add text, Page numbers and Replace text draw with the PDF base fonts, which cover Latin scripts only. Text in Chinese,
-  Japanese, Korean, Greek, Cyrillic or Arabic silently comes out blank.
+- Watermark, Page numbers and Replace text draw with Helvetica, and switch to Noto Sans when the text has characters
+  outside Latin-1 (macrons, Greek, Cyrillic). Chinese, Japanese, Korean and Arabic are not covered; pick a font that
+  has them in Add text.
+- Replace text on a phrase that wraps from one line to the next draws the replacement on each line.
 - Replace text, Redact and Find text match inside words, so `cat` also hits `catalog`. A replacement wider than the
   text it replaces is drawn smaller so it still fits the original box.
 - N-up and Resize pages copy page content only: annotations, form fields and links do not come across.

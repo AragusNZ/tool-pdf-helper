@@ -26,6 +26,8 @@ def run(ctx: FeatureContext, params: tuple[int, int, Path]) -> None:
         compress(src, out, dpi=dpi, quality=quality)
         before, after = src.stat().st_size, out.stat().st_size
         ctx.log(f"{src.name}: {before / 1e6:.2f} MB -> {after / 1e6:.2f} MB ({out})")
+        if after >= before:
+            ctx.log(f"  {src.name}: no smaller than the original - its images were already at or below {dpi} dpi")
         return out
 
     each_file(ctx, one)

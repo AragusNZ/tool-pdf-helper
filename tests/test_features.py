@@ -17,6 +17,12 @@ from pdf_helper.features.base import FeatureContext, each_file
 from pdf_helper.ui import dialogs
 
 
+@pytest.mark.parametrize("feature", [replace_text, watermark])
+def test_text_of_only_spaces_is_a_cancel(feature, make_pdf, log, monkeypatch):
+    monkeypatch.setattr(feature, "ask_text", lambda *a: "   ")
+    assert feature.FEATURE.prepare(FeatureContext([make_pdf("a.pdf", 1)], log)) is None
+
+
 def test_registry_labels_unique():
     labels = [f.label for f in FEATURES]
     assert len(labels) == len(set(labels)) == 26
@@ -54,6 +60,17 @@ def test_merge_prepare_and_run(make_pdf, make_png, tmp_path: Path, log, monkeypa
     assert params == (out, IMAGE_SIZE, MATCH)
     merge.FEATURE.run(ctx, params)
     assert page_count(out) == 3 and "merged 2 files" in log.lines[-1]
+
+
+def test_merge_honours_cancel_and_reports_progress(make_pdf, tmp_path: Path, log):
+    out = tmp_path / "m.pdf"
+    ctx = FeatureContext([make_pdf("a.pdf", 1), make_pdf("b.pdf", 1)], log)
+    seen: list[tuple[int, int]] = []
+    ctx.progress = lambda done, total: seen.append((done, total))
+    ctx.cancelled = lambda: len(seen) == 1  # cancel lands after the first file
+    merge.FEATURE.run(ctx, (out, IMAGE_SIZE, MATCH))
+    assert not out.exists() and ctx.outputs == [] and seen == [(1, 2)]
+    assert log.lines[-1] == "cancelled: 1 of 2 file(s) prepared, nothing written"
 
 
 def test_merge_prepare_cancel(make_pdf, log, monkeypatch):
@@ -159,6 +176,13 @@ def test_compress_feature(make_pdf, tmp_path: Path, log, monkeypatch):
     assert params == (100, 60, tmp_path)
     compress.FEATURE.run(ctx, params)
     assert page_count(tmp_path / "a-small.pdf") == 2 and "MB ->" in log.lines[0]
+
+
+def test_compress_says_when_nothing_was_saved(make_pdf, tmp_path: Path, log, monkeypatch):
+    pdf = make_pdf("a.pdf", 1)
+    monkeypatch.setattr(compress, "compress", lambda src, out, **k: out.write_bytes(src.read_bytes() + b"%" * 100))
+    compress.FEATURE.run(FeatureContext([pdf], log), (100, 60, tmp_path))
+    assert "no smaller than the original" in log.lines[-1]
 
 
 def test_compress_prepare_cancel(make_pdf, log, monkeypatch):

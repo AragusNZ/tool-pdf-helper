@@ -79,6 +79,7 @@ def rotate(src: Path, degrees: int, pages: list[int] | None, out: Path) -> None:
 
 def compress(src: Path, out: Path, *, dpi: int = 150, quality: int = 75) -> None:
     """Downsample images, subset fonts, garbage-collect and deflate."""
+    _not_source(out, [src])
     with open_pdf(src) as doc:
         doc.rewrite_images(dpi_threshold=dpi + 1, dpi_target=dpi, quality=quality)
         doc.subset_fonts()
@@ -134,7 +135,10 @@ def _safe_stem(title: str) -> str:
 
 
 def split_by_toc(src: Path, out_dir: Path) -> list[Path]:
-    """Write one PDF per top-level bookmark, covering the pages up to the next one."""
+    """Write one PDF per top-level bookmark, covering the pages up to the next one.
+
+    Pages before the first bookmark become a "front matter" part so nothing is dropped.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     with open_pdf(src) as doc:
@@ -144,6 +148,8 @@ def split_by_toc(src: Path, out_dir: Path) -> list[Path]:
         starts = sorted(found, key=lambda item: item[0])  # stable: same-page entries keep their order
         if not starts:
             raise ValueError(f"{src.name} has no top-level bookmarks")
+        if starts[0][0] > 0:
+            starts.insert(0, (0, "front matter"))  # cover and contents before the first bookmark
         bounds = [s[0] for s in starts[1:]] + [doc.page_count]
         for n, ((start, title), end) in enumerate(zip(starts, bounds), start=1):
             if start >= end:

@@ -5,13 +5,14 @@ from pathlib import Path
 import pymupdf
 
 from pdf_helper.core.pdf import _not_source, open_pdf
+from pdf_helper.core.stamp import font_for
 
 
 def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bool = False) -> int:
     """Replace every occurrence of ``old`` with ``new``. Returns the number of replacements.
 
-    Keeps the original size and colour; the font falls back to Helvetica because redaction
-    can only reinsert base-14 fonts. Longer replacements are shrunk to fit the original box.
+    Keeps the original size and colour; the font is Helvetica, or Noto Sans when the replacement
+    has characters outside Latin-1. Longer replacements are shrunk to fit the original box.
 
     The replacement is drawn after the redactions rather than handed to the redaction annotation:
     PyMuPDF's own reinsertion wraps the text inside the old box and drops it below about 4 pt.
@@ -19,9 +20,9 @@ def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bo
     count = 0
     with open_pdf(src) as doc:
         for page in doc:
-            hits: list[tuple[pymupdf.Rect, float, tuple, float]] = []
+            hits: list[tuple[pymupdf.Rect, float, tuple, float, str]] = []
             for rect in page.search_for(old):  # search_for is case-insensitive
-                if case_sensitive and page.get_textbox(rect).strip() != old:
+                if case_sensitive and page.get_textbox(rect).strip() not in old:  # a wrapped hit is one rect per line
                     continue
                 spans = [
                     s for b in page.get_text("dict", clip=rect)["blocks"] for line in b["lines"] for s in line["spans"]
@@ -30,16 +31,17 @@ def replace_text(src: Path, old: str, new: str, out: Path, *, case_sensitive: bo
                 rgb = spans[0]["color"] if spans else 0
                 color = tuple(((rgb >> shift) & 255) / 255 for shift in (16, 8, 0))
                 baseline = spans[0]["origin"][1] if spans else rect.y1 - size * 0.2
-                width = pymupdf.get_text_length(new, fontname="helv", fontsize=size)
+                fontname = font_for(new)
+                width = pymupdf.Font(fontname).text_length(new, fontsize=size)
                 if width > rect.width:
                     size *= rect.width / width  # shrink rather than wrap or overrun the neighbours
-                hits.append((rect, size, color, baseline))
+                hits.append((rect, size, color, baseline, fontname))
                 page.add_redact_annot(rect, fill=False)
                 count += 1
             page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
-            for rect, size, color, baseline in hits:
+            for rect, size, color, baseline, fontname in hits:
                 if new:
-                    page.insert_text((rect.x0, baseline), new, fontname="helv", fontsize=size, color=color)
+                    page.insert_text((rect.x0, baseline), new, fontname=fontname, fontsize=size, color=color)
         doc.save(out)
     return count
 
@@ -62,10 +64,11 @@ def redact(
     count = 0
     with open_pdf(src) as doc:
         for page in doc:
-            rects = [pymupdf.Rect(*r) for r in (boxes or {}).get(page.number, [])]
+            # Boxes come from the preview in displayed space; redaction takes unrotated space.
+            rects = [pymupdf.Rect(*r) * page.derotation_matrix for r in (boxes or {}).get(page.number, [])]
             if needle:
                 for rect in page.search_for(needle):  # search_for is case-insensitive
-                    if case_sensitive and page.get_textbox(rect).strip() != needle:
+                    if case_sensitive and page.get_textbox(rect).strip() not in needle:
                         continue
                     rects.append(rect)
             for rect in rects:

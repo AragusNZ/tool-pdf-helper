@@ -265,7 +265,7 @@ def footnote_comments(src: Path, out: Path, opts: NotesOptions = NotesOptions(),
             for p, notes in by_page.items():
                 source[p] = p + added
                 first = p + 1 + added
-                with _notes_pages(doc[p].rect, [(f"Notes for page {p + 1}", notes)], opts) as pages:
+                with _notes_pages(doc[source[p]].rect, [(f"Notes for page {p + 1}", notes)], opts) as pages:
                     doc.insert_pdf(pages, start_at=first)
                     added += pages.page_count
                     blocks.append((notes, first, pages.page_count, f"Notes for page {p + 1}"))

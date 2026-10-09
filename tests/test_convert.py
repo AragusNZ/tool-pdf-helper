@@ -71,6 +71,13 @@ def test_image_page_size_and_auto_orientation(tmp_path: Path):
     assert _page(to_pdf(wide, tmp_path, page_size="HD 1920x1080")) == (1920, 1080)
 
 
+def test_image_keeps_its_pixels_on_a_fixed_page_size(tmp_path: Path):
+    scan = _png(tmp_path / "scan.png", 1240, 1754)  # a 150 dpi A4 scan
+    with pymupdf.open(to_pdf(scan, tmp_path, page_size="A4")) as doc:
+        xref = doc[0].get_images()[0][0]
+        assert doc.extract_image(xref)["width"] == 1240
+
+
 def test_image_orientation_can_be_forced(tmp_path: Path):
     wide = _png(tmp_path / "wide.png", 300, 100)
     assert _page(to_pdf(wide, tmp_path, page_size="A4", orientation="Portrait")) == (595, 842)

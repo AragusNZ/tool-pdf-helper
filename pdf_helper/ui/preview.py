@@ -1,10 +1,18 @@
 """Page image that reports where it was clicked, shared by the placement and redaction dialogs."""
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QLabel
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QLabel, QWidget
 
 OUTLINE = QColor("#c0272d")
+MAX_PX = 700
+CHROME_PX = 220  # title bar, form rows and buttons around the preview
+
+
+def preview_px(widget: QWidget) -> int:
+    """Pixels the page image may take: 700, or less on a short screen so the whole page can be clicked."""
+    screen = widget.screen() or QGuiApplication.primaryScreen()
+    return max(300, min(MAX_PX, screen.availableGeometry().height() - CHROME_PX))
 
 
 class PagePreview(QLabel):

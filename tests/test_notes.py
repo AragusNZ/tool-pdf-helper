@@ -37,6 +37,21 @@ def test_numbers_run_through_the_file_and_only_commented_pages_get_notes(tmp_pat
         assert "Ann" not in texts[1]  # authors off by default
 
 
+def test_notes_page_after_a_landscape_page_is_landscape(tmp_path: Path):
+    src, out = tmp_path / "mixed.pdf", tmp_path / "out.pdf"
+    with pymupdf.open() as doc:
+        for width, height in ((595, 842), (842, 595)):
+            page = doc.new_page(width=width, height=height)
+            page.insert_text((72, 100), "text")
+            annot = page.add_highlight_annot(pymupdf.Rect(72, 90, 200, 104))
+            annot.set_info(content="note")
+            annot.update()
+        doc.save(src)
+    footnote_comments(src, out)
+    with pymupdf.open(out) as doc:  # page, its notes, landscape page, its notes
+        assert [(round(p.rect.width), round(p.rect.height)) for p in doc] == [(595, 842)] * 2 + [(842, 595)] * 2
+
+
 def test_links_and_bookmarks(tmp_path: Path):
     src = _commented(tmp_path / "a.pdf", {0: ["one"], 1: ["two"]}, pages=2)
     with pymupdf.open(src) as doc:

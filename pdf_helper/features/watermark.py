@@ -9,7 +9,7 @@ from pdf_helper.ui.dialogs import ask_text, choose_directory
 
 
 def prepare(ctx: FeatureContext) -> tuple[str, Path] | None:
-    text = ask_text(ctx.parent, "Watermark", "Watermark text:")
+    text = (ask_text(ctx.parent, "Watermark", "Watermark text:") or "").strip()
     if not text:
         return None
     out_dir = choose_directory(ctx.parent, ctx.files[0].parent)

@@ -27,8 +27,13 @@ class FileQueue(QListWidget):
         skipped: list[Path] = []
         existing = set(self.paths())
         for p in paths:
-            candidates = sorted(c for c in p.iterdir() if c.is_file()) if p.is_dir() else [p]
+            try:
+                candidates = sorted(c for c in p.iterdir() if c.is_file()) if p.is_dir() else [p]
+            except OSError:  # a folder the user cannot read
+                skipped.append(p)
+                continue
             for c in candidates:
+                c = c.resolve()  # one entry per file, however it was spelled on the command line
                 if not c.is_file() or not is_supported(c):
                     skipped.append(c)
                 elif c not in existing:

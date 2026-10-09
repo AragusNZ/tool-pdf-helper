@@ -11,7 +11,7 @@ Params = tuple[str, str, bool, Path]
 
 
 def prepare(ctx: FeatureContext) -> Params | None:
-    old = ask_text(ctx.parent, "Replace text", "Find:")
+    old = (ask_text(ctx.parent, "Replace text", "Find:") or "").strip()
     if not old:
         return None
     new = ask_text(ctx.parent, "Replace text", f"Replace '{old}' with:")

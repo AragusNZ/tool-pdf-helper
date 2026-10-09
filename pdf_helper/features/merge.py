@@ -20,13 +20,18 @@ def prepare(ctx: FeatureContext) -> tuple[Path, str, str] | None:
 
 def run(ctx: FeatureContext, params: tuple[Path, str, str]) -> None:
     out, page_size, orientation = params
+    total = len(ctx.files)
     with tempfile.TemporaryDirectory() as tmp:
         pdfs = []
         for i, src in enumerate(ctx.files):
+            if ctx.cancelled():
+                ctx.log(f"cancelled: {i} of {total} file(s) prepared, nothing written")
+                return
             ctx.log(f"preparing {src.name}")
             work = Path(tmp, str(i))  # own dir per input: two inputs with the same stem must not collide
             work.mkdir()
             pdfs.append(to_pdf(src, work, log=ctx.log, page_size=page_size, orientation=orientation))
+            ctx.progress(i + 1, total)
         merge(pdfs, out)
     ctx.outputs.append(out)
     ctx.log(f"merged {len(pdfs)} files -> {out}")

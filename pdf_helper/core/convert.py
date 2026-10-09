@@ -45,16 +45,23 @@ def is_supported(path: Path) -> bool:
 
 
 def _image_to_pdf(src: Path, out: Path, size: tuple[float, float], orientation: str) -> None:
-    """One page per frame at ``size``, in ``orientation``, the picture scaled to fit."""
+    """One page per frame at ``size``, in ``orientation``, the picture scaled to fit.
+
+    A single-frame image goes in as its own file, so a 300 dpi scan keeps every pixel (and a JPEG its
+    stream). Multi-frame GIF/TIFF is rendered per frame.
+    """
     short, long = sorted(size)
     landscape = {"Portrait": False, "Landscape": True}
     with pymupdf.open(src) as img, pymupdf.open() as doc:
         for frame in img:
-            pix = frame.get_pixmap()
-            wide = landscape.get(orientation, pix.width > pix.height)
+            wide = landscape.get(orientation, frame.rect.width > frame.rect.height)
             width, height = (long, short) if wide else (short, long)
             page = doc.new_page(width=width, height=height)
-            page.insert_image(page.rect, pixmap=pix, keep_proportion=True)
+            if img.page_count == 1:
+                page.insert_image(page.rect, filename=str(src), keep_proportion=True)
+            else:
+                # ponytail: 72 dpi render; frames carry no pixel count MuPDF exposes. Fine for GIF, soft for TIFF scans.
+                page.insert_image(page.rect, pixmap=frame.get_pixmap(), keep_proportion=True)
         doc.save(out)
 
 

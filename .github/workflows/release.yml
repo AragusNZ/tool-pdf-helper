@@ -18,6 +18,14 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            # The tag names the release; VERSION names the exe, the zip and what the update check compares
+            # against. A mismatch would publish assets under the old number and nag every user for ever.
+            - name: Tag matches VERSION
+              shell: pwsh
+              run: |
+                  $v = (Get-Content VERSION -Raw).Trim()
+                  if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} does not match VERSION $v" }
+
             - uses: actions/setup-python@v5
               with:
                   python-version: "3.12"
@@ -25,8 +33,8 @@ jobs:
 
             - run: pip install -r requirements.txt -r requirements-dev.txt
 
-            # conftest.py already forces QT_QPA_PLATFORM=offscreen.
-            - run: pytest
+            # conftest.py already forces QT_QPA_PLATFORM=offscreen. Same gate as check.yml, on Windows.
+            - run: pytest --cov --cov-fail-under=95
 
             - run: choco install innosetup -y --no-progress
 
@@ -34,6 +42,7 @@ jobs:
 
             - uses: softprops/action-gh-release@v2
               with:
+                  fail_on_unmatched_files: true
                   files: |
                       dist/PdfHelper-*-setup.exe
                       dist/PdfHelper-*.zip

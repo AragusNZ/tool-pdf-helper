@@ -162,6 +162,8 @@ class MainWindow(QMainWindow):
     def _check_updates(self, manual: bool) -> None:
         """Ask GitHub off the UI thread; a startup check (manual=False) stays silent unless there is news."""
         if self._update_worker is not None:
+            if manual:
+                self.log("already checking for updates...")
             return
         result: dict = {}
         self._update_worker = Worker(lambda: result.update(latest=latest_version()), parent=self)
@@ -207,6 +209,7 @@ class MainWindow(QMainWindow):
     # --- features ----------------------------------------------------------
     def _run_feature(self, feature: Feature) -> None:
         ctx = FeatureContext(files=self.queue.paths(), log=self.log, parent=self)
+        self._output_dir = None  # a job that writes nothing must not reopen the previous job's folder
         params = None
         if feature.prepare is not None:
             try:

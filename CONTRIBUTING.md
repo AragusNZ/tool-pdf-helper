@@ -178,8 +178,9 @@ one of these to shorten the build:
 1. Bump `VERSION` — the operator's `dt patch`, not a hand edit in a feature PR.
 2. Rename `## [Unreleased]` in `CHANGELOG.md` to `## [<version>] - <date>` and open a fresh `## [Unreleased]`
    above it.
-3. Push a `v<version>` tag. `.github/workflows/release.yml` runs `pytest`, builds on a Windows runner and publishes
-   the installer, zip and checksums as a GitHub release.
+3. Push a `v<version>` tag. `.github/workflows/release.yml` refuses a tag that does not match `VERSION`, runs the
+   same coverage gate as `check.yml` on a Windows runner, builds, and publishes the installer, zip and checksums as
+   a GitHub release.
 
 Never cut a release by copying `dist\` around. SmartScreen tracks reputation per file hash and per download source,
 so a hand-copied exe starts from zero every time — and a runner build also keeps the `\\wsl.localhost` source paths

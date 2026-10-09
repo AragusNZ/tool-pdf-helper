@@ -22,8 +22,8 @@ def render_pages(src: Path, out_dir: Path, dpi: int = 150, fmt: str = "png") -> 
 def render_page_png(src: Path, page_no: int, max_px: int = 700) -> tuple[bytes, float, float]:
     """PNG bytes of one 0-based page scaled to fit ``max_px``, plus page width and height in points.
 
-    The pixmap and ``page.rect`` share the displayed (rotation-applied) coordinate space, which is
-    also the space the text and image insertion functions take, so a click maps back by one divide.
+    The pixmap and ``page.rect`` share the displayed (rotation-applied) coordinate space, so a click
+    maps back by one divide. The insertion and redaction functions in core derotate on the way in.
     """
     with open_pdf(src) as doc:
         page = doc[page_no]

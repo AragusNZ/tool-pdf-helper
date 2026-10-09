@@ -8,18 +8,22 @@ from pdf_helper.core.pdf import open_pdf
 
 
 def watermark(src: Path, text: str, out: Path, *, opacity: float = 0.25, size: int = 48, angle: int = 45) -> None:
+    fontname = font_for(text)
     with open_pdf(src) as doc:
         for page in doc:
-            width = pymupdf.get_text_length(text, fontsize=size)
+            width = pymupdf.Font(fontname).text_length(text, fontsize=size)
+            # Laid out in displayed space, drawn in unrotated space: see add_text.
             center = (page.rect.tl + page.rect.br) / 2
             origin = pymupdf.Point(center.x - width / 2, center.y + size / 3)
             page.insert_text(
-                origin,
+                origin * page.derotation_matrix,
                 text,
+                fontname=fontname,
                 fontsize=size,
                 color=(0.5, 0.5, 0.5),
                 fill_opacity=opacity,
-                morph=(center, pymupdf.Matrix(angle)),
+                rotate=page.rotation,
+                morph=(center * page.derotation_matrix, pymupdf.Matrix(angle)),
                 overlay=True,
             )
         doc.save(out)
@@ -29,6 +33,20 @@ MM = 72 / 25.4  # PDF points per millimetre
 
 # Base-14 short codes PyMuPDF understands, minus the two symbol fonts (no usable alphabet).
 BASE14 = ("helv", "hebo", "heit", "hebi", "tiro", "tibo", "tiit", "tibi", "cour", "cobo", "coit", "cobi")
+
+
+def font_for(text: str, fontname: str = "helv") -> str:
+    """``fontname``, unless it is a base-14 face and ``text`` needs more than Latin-1: then Noto Sans.
+
+    The base-14 fonts are written Latin-1 encoded, so a macron or Greek letter comes out as a stray glyph.
+    """
+    if fontname not in BASE14:
+        return fontname
+    try:
+        text.encode("latin-1")
+    except UnicodeEncodeError:
+        return "notos"
+    return fontname
 
 
 def fonts() -> dict[str, str]:
@@ -52,7 +70,8 @@ def add_text(
     """Write ``text`` with its top-left corner at ``pos`` (page points) on ``pages`` (0-based; None = all).
 
     The text box runs from ``pos`` to the bottom-right of the page, so long text wraps.
-    Coordinates are in the page's displayed space: a rotated page needs no correction.
+    ``pos`` is in the page's displayed space (what the preview shows); the insertion functions take
+    unrotated space, so the box is derotated and the text turned with the page.
     A page named twice in the spec is written once.
     """
     with open_pdf(src) as doc:
@@ -61,19 +80,21 @@ def add_text(
             box = pymupdf.Rect(pos[0], pos[1], page.rect.x1, page.rect.y1)
             if box.is_empty or box.is_infinite:
                 raise ValueError(f"position {pos} is outside page {i + 1}")
-            if page.insert_textbox(box, text, fontname=fontname, fontsize=size, color=color) < 0:
+            box *= page.derotation_matrix
+            if page.insert_textbox(box, text, fontname=fontname, fontsize=size, color=color, rotate=page.rotation) < 0:
                 raise ValueError(f"text does not fit on page {i + 1} at that position and size")
         doc.save(out)
 
 
 def add_image(src: Path, out: Path, image: Path, rect: tuple[float, float, float, float], pages: list[int] | None = None) -> None:
-    """Place ``image`` inside ``rect`` (page points) on ``pages`` (0-based; None = all), aspect preserved."""
+    """Place ``image`` inside ``rect`` (displayed page points) on ``pages`` (0-based; None = all), aspect preserved."""
     target = pymupdf.Rect(*rect)
     if target.is_empty or target.is_infinite:
         raise ValueError(f"image rectangle {rect} is empty")
     with open_pdf(src) as doc:
         for i in range(doc.page_count) if pages is None else dict.fromkeys(pages):
-            doc[i].insert_image(target, filename=str(image), keep_proportion=True)
+            page = doc[i]
+            page.insert_image(target * page.derotation_matrix, filename=str(image), keep_proportion=True, rotate=page.rotation)
         doc.save(out)
 
 
@@ -100,14 +121,15 @@ def page_numbers(
 ) -> None:
     """Stamp a number on every page. ``fmt`` takes ``{n}`` and ``{total}``; numbering starts at 1.
 
-    ``position`` is one of ``NUMBER_POSITIONS``. Coordinates are in the page's displayed space, so a
-    rotated page gets its number the right way up.
+    ``position`` is one of ``NUMBER_POSITIONS``, laid out in displayed space and derotated on the way in,
+    so a rotated page gets its number the right way up.
     """
     # ponytail: always starts at 1. Add a first-number box if anyone needs a skipped cover page.
     with open_pdf(src) as doc:
         for page in doc:
             text = fmt.format(n=page.number + 1, total=doc.page_count)
-            width = pymupdf.get_text_length(text, fontname=fontname, fontsize=size)
+            font = font_for(text, fontname)
+            width = pymupdf.Font(font).text_length(text, fontsize=size)
             rect = page.rect
             if position.endswith("left"):
                 x = margin
@@ -116,5 +138,5 @@ def page_numbers(
             else:
                 x = (rect.width - width) / 2
             y = margin + size if position.startswith("Top") else rect.height - margin
-            page.insert_text((x, y), text, fontname=fontname, fontsize=size)
+            page.insert_text(pymupdf.Point(x, y) * page.derotation_matrix, text, fontname=font, fontsize=size, rotate=page.rotation)
         doc.save(out)

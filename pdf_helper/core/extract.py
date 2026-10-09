@@ -60,7 +60,7 @@ def find_text(src: Path, needle: str, *, case_sensitive: bool = False) -> list[t
         for page in doc:
             rects = page.search_for(needle)  # search_for is case-insensitive
             if case_sensitive:
-                rects = [r for r in rects if page.get_textbox(r).strip() == needle]
+                rects = [r for r in rects if page.get_textbox(r).strip() in needle]  # a wrapped hit is one rect per line
             if rects:
                 hits.append((page.number + 1, len(rects)))
     return hits

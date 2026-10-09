@@ -248,8 +248,8 @@ def test_close_waits_for_a_running_update_check(qapp, monkeypatch):
     w = MainWindow()
     w._check_updates(manual=False)
     worker = w._update_worker
-    w._check_updates(manual=True)  # second click while one is in flight is ignored
-    assert w._update_worker is worker
+    w._check_updates(manual=True)  # second click while one is in flight is ignored, but says so
+    assert w._update_worker is worker and "already checking" in w.log_view.toPlainText()
     threading.Timer(0.2, release.set).start()
     started = time.monotonic()
     ev = QCloseEvent()
@@ -312,6 +312,19 @@ def test_open_output_folder_after_a_job(qapp, monkeypatch, make_pdf, tmp_path: P
     assert w.open_output.isEnabled()
     w.open_output.click()
     assert [Path(o) for o in opened] == [out.parent]
+
+
+def test_a_job_that_writes_nothing_does_not_reopen_the_last_folder(qapp, make_pdf, tmp_path: Path):
+    writer = Feature(label="W", run=lambda ctx, p: ctx.outputs.append(tmp_path))
+    silent = Feature(label="S", run=lambda ctx, p: None)
+    w = _window(qapp, [writer, silent])
+    w.queue.add_paths([make_pdf("a.pdf", 1)])
+    w._run_feature(writer)
+    _wait(w, qapp)
+    assert w.open_output.isEnabled()
+    w._run_feature(silent)
+    _wait(w, qapp)
+    assert not w.open_output.isEnabled() and w._output_dir is None
 
 
 def test_output_folder_can_be_the_output_itself(qapp, make_pdf, tmp_path: Path):

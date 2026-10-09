@@ -5,6 +5,7 @@ import pytest
 
 from pdf_helper.core.pdf import compress, grayscale, page_count, rotate, split, split_by_toc
 from pdf_helper.core.replace import redact
+from tests.conftest import ink_bbox
 
 
 def test_split(make_pdf, tmp_path: Path):
@@ -31,6 +32,12 @@ def test_compress_keeps_pages(make_pdf, tmp_path: Path):
     out = tmp_path / "c.pdf"
     compress(make_pdf("c0.pdf", 3), out, dpi=100, quality=60)
     assert page_count(out) == 3
+
+
+def test_compress_refuses_its_own_source(make_pdf):
+    src = make_pdf("a.pdf", 1)
+    with pytest.raises(ValueError, match="one of the input files"):
+        compress(src, src)
 
 
 def test_split_rejects_zero(make_pdf, tmp_path: Path):
@@ -132,6 +139,27 @@ def test_redact_honours_case_and_leaves_untouched_pages_alone(tmp_path: Path):
         assert doc[0].get_text().split() == ["and", "secret"] and doc[1].get_text().strip() == "nothing here"
 
 
+def test_redact_box_lands_where_dragged_on_a_rotated_page(tmp_path: Path):
+    src, out = tmp_path / "rot.pdf", tmp_path / "r.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page(width=300, height=400).set_rotation(90)
+        doc.save(src)
+    redact(src, out, {0: [(20, 30, 120, 80)]})
+    with pymupdf.open(out) as doc:
+        assert ink_bbox(doc[0]) == pytest.approx((20, 119, 30, 79), abs=1)
+
+
+def test_redact_match_case_catches_a_hit_that_wraps(tmp_path: Path):
+    src, out = tmp_path / "w.pdf", tmp_path / "r.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page()
+        page.insert_textbox(pymupdf.Rect(72, 72, 150, 200), "the Secret Code is", fontsize=12)  # wraps after Secret
+        doc.save(src)
+    assert redact(src, out, None, "Secret Code", case_sensitive=True) == 2
+    with pymupdf.open(out) as doc:
+        assert "Secret" not in doc[0].get_text() and "Code" not in doc[0].get_text()
+
+
 def test_redact_refuses_its_own_source(make_pdf):
     src = make_pdf("a.pdf", 1)
     with pytest.raises(ValueError, match="one of the input files"):
@@ -142,8 +170,8 @@ def test_split_by_toc_sorts_a_jumbled_contents(tmp_path: Path):
     """A contents list naming a later page first must not swallow the chapter before it."""
     src = _bookmarked(tmp_path, [[1, "Later", 4], [1, "Earlier", 2]])
     parts = split_by_toc(src, tmp_path / "out")
-    assert [p.name for p in parts] == ["book-01 Earlier.pdf", "book-02 Later.pdf"]
-    assert [page_count(p) for p in parts] == [2, 3]  # pages 2-3 and 4-6; page 1 is before any bookmark
+    assert [p.name for p in parts] == ["book-01 front matter.pdf", "book-02 Earlier.pdf", "book-03 Later.pdf"]
+    assert [page_count(p) for p in parts] == [1, 2, 3]  # page 1 is before any bookmark, then 2-3 and 4-6
 
 
 def test_split_by_toc_strips_control_characters(tmp_path: Path):
